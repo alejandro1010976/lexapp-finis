@@ -3,55 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LexApp - Finis Terrae Cloud</title>
+    <title>LexApp - Finis Terrae</title>
     
-    <!-- Librerías de Carga Directa -->
+    <!-- Librerías de Carga Garantizada -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Firebase SDK (Carga Garantizada) -->
+    <!-- Firebase SDK Tradicional -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;900&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet">
     
     <style>
         :root { --turquesa: #00ced1; --negro: #000000; --blanco: #ffffff; }
-        body { margin: 0; padding: 0; background-color: var(--turquesa); font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; }
+        body { margin: 0; padding: 0; background-color: var(--turquesa); font-family: 'Inter', sans-serif; overflow: hidden; }
         .font-serif { font-family: 'Playfair Display', serif; }
         .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
+        .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
         
-        /* Pantalla de Carga que no falla */
-        #loading-overlay {
+        /* Pantalla de carga */
+        #loader {
             position: fixed; inset: 0; background: var(--turquesa);
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 9999; transition: opacity 0.5s ease;
+            z-index: 9999;
         }
 
-        #error-log {
-            background: black; color: #0f0; padding: 15px; border-radius: 10px;
-            font-family: monospace; font-size: 11px; margin-top: 20px;
-            max-width: 80%; display: none;
-        }
-
-        .btn-emergency {
-            margin-top: 20px; background: black; color: white; padding: 10px 20px;
-            border-radius: 50px; font-weight: 900; cursor: pointer; display: none;
-        }
+        .animate-up { animation: slideUp 0.4s ease-out forwards; }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     </style>
 </head>
 <body>
 
-    <!-- Capa de Carga / Failsafe -->
-    <div id="loading-overlay">
+    <div id="loader">
         <h1 class="text-7xl font-serif italic mb-4">LexApp</h1>
-        <p id="loader-status" class="uppercase tracking-[0.4em] font-black text-xs opacity-50">Sincronizando Nube Santiago...</p>
-        
-        <div id="error-log"></div>
-        <button id="emergency-btn" onclick="location.reload()" class="btn-emergency">REINTENTAR CARGA FORZADA</button>
+        <p class="uppercase tracking-[0.4em] font-black text-xs opacity-50">Iniciando Red Santiago...</p>
     </div>
 
     <div id="root"></div>
@@ -59,6 +48,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
+        // --- LLAVES DE FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -71,31 +61,16 @@
         const APP_ID = 'lex-app-finis-2026';
         let db, auth;
 
-        // Mostrar errores en pantalla si React falla
-        function debug(msg) {
-            const log = document.getElementById('error-log');
-            if(log) {
-                log.style.display = 'block';
-                log.innerHTML += `> ${msg}<br/>`;
-            }
-        }
-
+        // Inicializar
         try {
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
-        } catch (e) { debug("Firebase Error: " + e.message); }
-
-        // Temporizador de emergencia: Si en 5 segundos no carga, mostrar botón
-        setTimeout(() => {
-            const btn = document.getElementById('emergency-btn');
-            if(btn) btn.style.display = 'block';
-        }, 5000);
+        } catch (e) { console.error(e); }
 
         function App() {
             const [user, setUser] = useState(null);
             const [view, setView] = useState('biblioteca');
-            const [loading, setLoading] = useState(true);
             const [materias, setMaterias] = useState([]);
             const [msgs, setMsgs] = useState([]);
             const [input, setInput] = useState("");
@@ -104,11 +79,9 @@
             useEffect(() => {
                 const unsub = auth.onAuthStateChanged(u => {
                     setUser(u);
-                    setLoading(false);
-                    // Forzar ocultar el loader
-                    const overlay = document.getElementById('loading-overlay');
-                    if(overlay) overlay.style.opacity = '0';
-                    setTimeout(() => { if(overlay) overlay.style.display = 'none'; }, 500);
+                    // Ocultar cargador
+                    const l = document.getElementById('loader');
+                    if(l) l.style.display = 'none';
                 });
                 return () => unsub();
             }, []);
@@ -119,20 +92,20 @@
                 
                 const unsub1 = db.collection(`${path}/biblioteca_col/archivos`).onSnapshot(snap => {
                     setMaterias(snap.docs.map(d => ({id: d.id, ...d.data()})));
-                }, e => debug("Firestore Biblioteca: " + e.message));
+                });
 
                 const unsub2 = db.collection(`${path}/chat_col/mensajes`).onSnapshot(snap => {
                     const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-                    list.sort((a,b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+                    list.sort((a,b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                     setMsgs(list);
-                }, e => debug("Firestore Chat: " + e.message));
+                });
 
                 return () => { unsub1(); unsub2(); };
             }, [user]);
 
             const login = () => {
-                const provider = new firebase.auth.GoogleAuthProvider();
-                auth.signInWithPopup(provider).catch(e => alert("Error: " + e.message));
+                const p = new firebase.auth.GoogleAuthProvider();
+                auth.signInWithPopup(p).catch(e => alert("Error Google: " + e.message));
             };
 
             const sendChat = async () => {
@@ -143,18 +116,16 @@
                 });
             };
 
-            if (loading) return null;
-
             if (!user) {
                 return (
-                    <div className="h-screen flex flex-col items-center justify-center p-6 text-center">
-                        <h1 className="text-9xl font-serif italic mb-6 animate-bounce">LexApp</h1>
-                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full">
-                            <h2 className="text-2xl font-black uppercase italic mb-8">Acceso Privado</h2>
+                    <div className="h-screen flex flex-col items-center justify-center p-6 text-center bg-[#00ced1]">
+                        <h1 className="text-9xl font-serif italic mb-8 animate-up">LexApp</h1>
+                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
+                            <h2 className="text-2xl font-black uppercase italic mb-8 text-black">Acceso Estudiantes</h2>
                             <button onClick={login} className="w-full bg-black text-[#00ced1] py-6 rounded-3xl font-black text-xl shadow-lg hover:scale-105 transition-all uppercase italic">
                                 Entrar con Gmail
                             </button>
-                            <p className="mt-8 text-[10px] font-black opacity-30 uppercase">Servidor: southamerica-west1</p>
+                            <p className="mt-8 text-[10px] font-black opacity-30 uppercase text-black">U. Finis Terrae • Santiago</p>
                         </div>
                     </div>
                 );
@@ -164,10 +135,10 @@
                 <div className="flex h-screen bg-white overflow-hidden text-black">
                     {/* SIDEBAR */}
                     <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20">
-                        <h1 className="text-5xl font-serif italic font-black mb-12">LexApp</h1>
+                        <h1 className="text-6xl font-serif italic font-black mb-12">LexApp</h1>
                         <div className="space-y-4 flex-grow">
                             {['biblioteca', 'consultor', 'amigos'].map(t => (
-                                <button key={t} onClick={() => setView(t)} className={`w-full text-left p-5 font-black uppercase text-xs rounded-2xl border-4 border-transparent transition-all ${view === t ? 'bg-black text-[#00ced1] shadow-hard translate-x-2' : 'hover:border-black'}`}>
+                                <button key={t} onClick={() => setView(t)} className={`w-full text-left p-5 font-black uppercase text-xs rounded-2xl border-4 border-transparent transition-all ${view === t ? 'active-tab shadow-hard' : 'hover:border-black'}`}>
                                     {t}
                                 </button>
                             ))}
@@ -184,17 +155,17 @@
                     {/* MAIN */}
                     <main className="flex-grow p-12 overflow-y-auto bg-white flex flex-col">
                         <header className="flex justify-between items-end mb-16">
-                            <h2 className="text-8xl font-serif font-black italic border-b-[15px] border-[#00ced1] inline-block leading-none uppercase">{view}</h2>
+                            <h2 className="text-8xl font-serif font-black italic border-b-[15px] border-[#00ced1] leading-none uppercase">{view}</h2>
                             <button className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:-translate-y-1 transition-all uppercase italic">+ Subir</button>
                         </header>
 
-                        <div className="flex-grow">
+                        <div className="flex-grow animate-up">
                             {view === 'biblioteca' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-10 text-4xl uppercase">Biblioteca vacía</p>}
+                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-10 text-4xl uppercase">Biblioteca vacía en Santiago</p>}
                                     {materias.map(m => (
-                                        <div key={m.id} className="p-10 border-8 border-black rounded-[50px] shadow-hard hover:bg-[#00ced1] transition-all cursor-pointer">
-                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded uppercase tracking-tighter">{m.categoria}</span>
+                                        <div key={m.id} className="p-10 border-8 border-black rounded-[50px] shadow-hard hover:bg-[#00ced1] transition-all bg-white">
+                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded uppercase">{m.categoria || 'GENERAL'}</span>
                                             <h3 className="text-4xl font-serif italic mt-6 mb-2 uppercase">{m.titulo}</h3>
                                             <p className="text-[9px] font-bold opacity-40 uppercase mt-4">Autor: {m.autor}</p>
                                         </div>
@@ -216,7 +187,7 @@
                                         <div ref={chatEnd} />
                                     </div>
                                     <div className="p-8 bg-white border-t-8 border-black flex gap-5">
-                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow font-black text-sm uppercase bg-white border-none outline-none" placeholder="Duda al grupo..." />
+                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow font-black text-sm uppercase bg-white border-none outline-none" placeholder="Escribe a tus colegas..." />
                                         <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl shadow-xl hover:scale-110 transition-transform">ENVIAR</button>
                                     </div>
                                 </div>
@@ -229,7 +200,7 @@
                                         <div className="w-5 h-5 bg-black rounded-full animate-pulse shadow-[0_0_20px_#00ced1]"></div>
                                         <span className="font-black uppercase text-2xl tracking-tighter">{user.displayName} (Tú)</span>
                                     </div>
-                                    <p className="mt-12 text-[10px] font-black opacity-30 uppercase tracking-[0.3em]">Conectado a la base de datos de Santiago de Chile.</p>
+                                    <p className="mt-12 text-[10px] font-black opacity-30 uppercase tracking-[0.3em]">Conectado a southamerica-west1 (Santiago).</p>
                                 </div>
                             )}
                         </div>
