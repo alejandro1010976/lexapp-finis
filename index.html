@@ -3,68 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LexApp EMERGENCY RECOVERY</title>
+    <title>LexApp - Finis Terrae Cloud</title>
     
-    <!-- Cambiamos a púrpura para confirmar que el cambio entró -->
-    <style>
-        body { background-color: #6b21a8 !important; color: white; font-family: sans-serif; margin: 0; padding: 20px; }
-        #emergency-log { 
-            background: #000; color: #0f0; padding: 20px; border: 5px solid #fff;
-            margin-top: 20px; font-family: monospace; font-size: 14px; 
-            max-height: 300px; overflow-y: auto; white-space: pre-wrap;
-        }
-        .btn-login { background: white; color: black; padding: 20px; border-radius: 20px; font-weight: 900; cursor: pointer; border: none; }
-    </style>
-
-    <!-- Librerías con versiones específicas para evitar fallos de carga -->
+    <!-- Librerías de Alto Rendimiento -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Firebase -->
+    <!-- Firebase SDK (Sincronizado con Santiago) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-</head>
-<body>
-
-    <div id="loading-ui">
-        <h1 class="text-4xl font-bold mb-4">LEXAPP RECOVERY MODE</h1>
-        <p id="status-msg">Iniciando sistema...</p>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Playfair+Display:ital,wght@0,900;1,900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { 
+            --turquesa: #00ced1; 
+            --negro: #1a1a1a;      
+            --blanco: #ffffff;      
+        }
+        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; padding: 0; overflow: hidden; }
+        .font-serif { font-family: 'Playfair Display', serif; }
+        .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
+        .border-main { border: 6px solid var(--negro); }
+        .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
         
-        <div id="emergency-log">
-            > Esperando a JavaScript...
-        </div>
-    </div>
-
-    <div id="root"></div>
-
-    <script>
-        // Sistema de log directo al HTML
-        const consoleLog = document.getElementById('emergency-log');
-        const statusMsg = document.getElementById('status-msg');
-        
-        function report(msg, isError = false) {
-            const span = document.createElement('div');
-            span.style.color = isError ? '#ff4444' : '#00ff00';
-            span.innerText = `> ${msg}`;
-            consoleLog.appendChild(span);
-            consoleLog.scrollTop = consoleLog.scrollHeight;
+        input, select, textarea {
+            border: 4px solid var(--negro) !important;
+            border-radius: 15px !important;
+            padding: 12px 20px !important;
+            outline: none !important;
+            font-weight: 700 !important;
         }
 
-        window.onerror = function(m, s, l) {
-            report(`ERROR CRÍTICO: ${m} en línea ${l}`, true);
-            statusMsg.innerText = "EL CÓDIGO FALLÓ. REVISA EL LOG ABAJO.";
-        };
-
-        report("Librerías base detectadas.");
-    </script>
+        ::-webkit-scrollbar { width: 10px; }
+        ::-webkit-scrollbar-thumb { background: var(--turquesa); border: 2px solid var(--negro); border-radius: 10px; }
+        
+        .animate-up { animation: slideUp 0.4s ease-out forwards; }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect } = React;
+        const { useState, useEffect, useRef } = React;
 
-        // TUS LLAVES (No tocar una sola coma aquí)
+        // --- TUS LLAVES REALES (Sincronizadas con lexapp-60f9b) ---
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -75,57 +63,107 @@
         };
 
         const APP_UID = 'lex-app-finis-2026';
+        let db, auth;
+
+        try {
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+        } catch (e) { console.error("Error Firebase:", e); }
 
         function App() {
             const [user, setUser] = useState(null);
-            const [data, setData] = useState([]);
+            const [tab, setTab] = useState('biblioteca');
+            const [materias, setMaterias] = useState([]);
+            const [messages, setMessages] = useState([]);
+            const [input, setInput] = useState("");
+            const [showModal, setShowModal] = useState(false);
+            const chatEnd = useRef(null);
 
+            // 1. Manejo de Sesión
             useEffect(() => {
-                try {
-                    report("Inicializando Firebase...");
-                    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                    
-                    const auth = firebase.auth();
-                    const db = firebase.firestore();
+                const unsub = auth.onAuthStateChanged(u => {
+                    setUser(u);
+                });
+                return () => unsub();
+            }, []);
 
-                    auth.onAuthStateChanged(u => {
-                        if (u) {
-                            report(`Usuario logueado: ${u.displayName || 'Anónimo'}`);
-                            setUser(u);
-                        } else {
-                            report("Sin sesión. Esperando login.", "orange");
-                        }
+            // 2. Sincronización de Datos en Tiempo Real
+            useEffect(() => {
+                if (!user || !db) return;
+
+                const pathBase = `artifacts/${APP_UID}/public/data`;
+
+                // Biblioteca
+                const unsubMat = db.collection(pathBase).doc('biblioteca_col').collection('archivos')
+                    .onSnapshot(snap => {
+                        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        list.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                        setMaterias(list);
                     });
 
-                    // Cargar algo de data para probar conexión
-                    db.collection(`artifacts/${APP_UID}/public/data/biblioteca_col/archivos`)
-                      .limit(10)
-                      .onSnapshot(snap => {
-                          report("Conexión a Base de Datos exitosa.");
-                          setData(snap.docs.map(d => d.data()));
-                      }, err => report("ERROR DB: " + err.message, true));
+                // Chat
+                const unsubChat = db.collection(basePathChat).doc('mensajes_col').collection('lista')
+                // Simplificamos la ruta para evitar errores de permisos
+                const unsubMsg = db.collection(`${pathBase}/chat_col/mensajes`)
+                    .onSnapshot(snap => {
+                        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        list.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+                        setMessages(list);
+                    });
 
-                } catch (e) {
-                    report("FALLO EN APP: " + e.message, true);
-                }
+                return () => { unsubMat(); unsubMsg(); };
+            }, [user]);
 
-                // Si llegamos aquí, React está vivo
-                document.getElementById('loading-ui').classList.add('hidden');
-            }, []);
+            useEffect(() => {
+                if (chatEnd.current) chatEnd.current.scrollIntoView({ behavior: 'smooth' });
+            }, [messages]);
+
+            useEffect(() => {
+                if (window.lucide) window.lucide.createIcons();
+            }, [tab, user]);
 
             const login = () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
-                firebase.auth().signInWithPopup(provider).catch(e => report("ERROR LOGIN: " + e.message, true));
+                auth.signInWithPopup(provider);
             };
 
+            const sendChat = async () => {
+                if (!input.trim() || !user) return;
+                const txt = input; setInput("");
+                await db.collection(`artifacts/${APP_UID}/public/data/chat_col/mensajes`).add({
+                    text: txt,
+                    user: user.displayName || 'Estudiante',
+                    uid: user.uid,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            };
+
+            const uploadMateria = async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const t = formData.get('titulo');
+                const c = formData.get('categoria');
+                await db.collection(`artifacts/${APP_UID}/public/data/biblioteca_col/archivos`).add({
+                    titulo: t,
+                    categoria: c,
+                    autor: user.displayName || 'Estudiante',
+                    uid: user.uid,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                setShowModal(false);
+            };
+
+            // Pantalla de Login
             if (!user) {
                 return (
-                    <div className="h-screen flex flex-col items-center justify-center p-10 bg-purple-900">
-                        <h1 className="text-8xl font-black italic mb-10">LexApp</h1>
-                        <div className="bg-white p-10 rounded-[40px] border-8 border-black shadow-[20px_20px_0_0_rgba(0,0,0,1)] text-black text-center">
-                            <p className="font-bold mb-6">SISTEMA RECUPERADO</p>
-                            <button onClick={login} className="btn-login uppercase italic text-2xl">
-                                INGRESAR CON GMAIL
+                    <div className="h-screen bg-[#00ced1] flex flex-col items-center justify-center p-6 text-center">
+                        <h1 className="text-9xl font-serif font-black italic mb-4 text-black animate-up">LexApp</h1>
+                        <p className="mb-12 font-black uppercase tracking-[0.5em] opacity-40 text-[10px] text-black">Nube Jurídica Privada • Santiago</p>
+                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
+                            <h2 className="font-black text-2xl mb-8 uppercase italic leading-tight text-black">Acceso<br/>Estudiantes</h2>
+                            <button onClick={login} className="w-full bg-black text-[#00ced1] px-8 py-6 rounded-3xl font-black shadow-hard hover:scale-105 transition-all flex items-center justify-center gap-4 uppercase italic text-sm">
+                                <i data-lucide="log-in"></i> Entrar con Gmail
                             </button>
                         </div>
                     </div>
@@ -133,34 +171,120 @@
             }
 
             return (
-                <div className="flex h-screen bg-white text-black">
-                    <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col">
-                        <h1 className="text-5xl font-black italic mb-10">LexApp</h1>
-                        <div className="flex-grow space-y-4 font-black">
-                            <div className="p-4 bg-black text-[#00ced1] rounded-xl">BIBLIOTECA</div>
-                            <div className="p-4 opacity-30">CONSULTOR (CARGANDO)</div>
+                <div className="flex h-screen overflow-hidden bg-white">
+                    {/* SIDEBAR */}
+                    <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20 flex-shrink-0">
+                        <div className="mb-14">
+                            <h1 className="text-6xl font-serif font-black italic tracking-tighter text-black leading-none">LexApp</h1>
+                            <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60 text-black">U. Finis Terrae</p>
                         </div>
-                        <div className="mt-auto flex items-center gap-3">
-                            <img src={user.photoURL} className="w-12 h-12 rounded-full border-4 border-black" referrerPolicy="no-referrer" />
-                            <button onClick={() => firebase.auth().signOut()} className="text-xs font-black uppercase underline">Salir</button>
+                        <div className="space-y-4 flex-grow">
+                            {['biblioteca', 'consultor', 'amigos'].map(t => (
+                                <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-5 font-black uppercase text-sm rounded-2xl transition-all border-4 border-transparent hover:border-black ${tab === t ? 'active-tab shadow-hard' : 'text-black/50'}`}>
+                                    {t.toUpperCase()}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="mt-auto bg-black p-5 rounded-3xl text-[#00ced1] flex items-center gap-3 border-2 border-white/10 shadow-2xl">
+                            {user.photoURL ? (
+                                <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" referrerPolicy="no-referrer" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-full bg-[#00ced1] flex items-center justify-center text-black font-black">U</div>
+                            )}
+                            <div className="truncate">
+                                <p className="text-[10px] font-black uppercase truncate">{user.displayName || 'Estudiante'}</p>
+                                <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 font-black hover:underline uppercase text-white tracking-widest">Cerrar Sesión</button>
+                            </div>
                         </div>
                     </nav>
-                    <main className="flex-grow p-12">
-                        <h2 className="text-7xl font-black italic border-b-[10px] border-[#00ced1] inline-block mb-10">NUBE SANTIAGO</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {data.length === 0 ? (
-                                <div className="p-10 border-4 border-dashed border-gray-200 rounded-3xl text-gray-300 font-bold">
-                                    No hay archivos en la nube todavía.
+
+                    {/* MAIN */}
+                    <main className="flex-grow p-12 overflow-y-auto bg-white flex flex-col">
+                        <header className="flex justify-between items-end mb-16 flex-shrink-0">
+                            <div>
+                                <h2 className="text-8xl font-serif font-black uppercase italic border-b-[15px] border-[#00ced1] leading-none text-black">{tab}</h2>
+                                <p className="text-[10px] font-black text-gray-300 mt-4 tracking-[0.4em] uppercase italic">Santiago Cloud Instance</p>
+                            </div>
+                            <button onClick={() => setShowModal(true)} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] transition-all uppercase italic">+ SUBIR</button>
+                        </header>
+
+                        <div className="animate-up flex-grow">
+                            {tab === 'biblioteca' && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                                    {materias.length === 0 && <p className="col-span-3 text-center py-24 font-black opacity-10 text-5xl italic uppercase text-black">Biblioteca vacía...<br/>¡Sincroniza un material!</p>}
+                                    {materias.map(m => (
+                                        <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard bg-white group cursor-pointer">
+                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest">{m.categoria}</span>
+                                            <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase text-black leading-none">{m.titulo}</h3>
+                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-6 text-black italic tracking-widest">Autor: {m.autor}</p>
+                                        </div>
+                                    ))}
                                 </div>
-                            ) : (
-                                data.map((item, i) => (
-                                    <div key={i} className="p-6 border-4 border-black rounded-3xl bg-[#00ced1] shadow-lg font-black">
-                                        {item.titulo}
+                            )}
+
+                            {tab === 'consultor' && (
+                                <div className="h-[600px] flex flex-col border-[8px] border-black rounded-[50px] overflow-hidden bg-gray-50 shadow-hard">
+                                    <div className="flex-grow p-10 overflow-y-auto space-y-6">
+                                        {messages.length === 0 && <p className="text-center opacity-20 font-black italic uppercase mt-20 text-black">No hay mensajes. Consulta al grupo.</p>}
+                                        {messages.map((m, i) => (
+                                            <div key={i} className={`flex ${m.uid === user.uid ? 'justify-end' : 'justify-start'}`}>
+                                                <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white shadow-xl' : 'bg-[#00ced1] font-bold text-black shadow-sm'}`}>
+                                                    <p className={`text-[8px] font-black uppercase mb-1 ${m.uid === user.uid ? 'opacity-40' : 'opacity-40'}`}>{m.user}</p>
+                                                    <p className="text-sm leading-relaxed">{m.text}</p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                        <div ref={chatEnd} />
                                     </div>
-                                ))
+                                    <div className="p-8 bg-white border-t-[8px] border-black flex gap-5">
+                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow font-black text-sm uppercase bg-white text-black border-none" placeholder="Duda al grupo de estudio..." />
+                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl hover:scale-110 shadow-xl flex items-center justify-center"><i data-lucide="send"></i></button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {tab === 'amigos' && (
+                                <div className="max-w-4xl bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard p-14">
+                                    <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-black leading-none">Comunidad LexApp</h3>
+                                    <div className="flex items-center gap-6 bg-[#00ced1] p-10 rounded-3xl border-4 border-black italic shadow-lg">
+                                        <div className="w-5 h-5 bg-black rounded-full animate-pulse"></div>
+                                        <span className="font-black uppercase text-2xl text-black">{user.displayName || 'Tú (Activo)'}</span>
+                                    </div>
+                                    <p className="mt-12 text-xs font-bold opacity-30 uppercase italic text-black leading-relaxed tracking-[0.2em]">
+                                        Toda la base de datos es compartida en tiempo real mediante el servidor regional de Santiago.
+                                    </p>
+                                </div>
                             )}
                         </div>
                     </main>
+
+                    {/* MODAL DE SUBIDA */}
+                    {showModal && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                            <form onSubmit={uploadMateria} className="bg-white border-[10px] border-black rounded-[60px] p-12 max-w-xl w-full shadow-2xl animate-up">
+                                <h3 className="text-5xl font-serif font-black italic mb-8 uppercase text-black">Sincronizar</h3>
+                                <div className="space-y-6 text-black">
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Materia / Tema</label>
+                                        <input name="titulo" className="w-full uppercase bg-white" placeholder="Ej: Contrato de Hipoteca..." required />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Categoría</label>
+                                        <select name="categoria" className="w-full bg-white font-black uppercase">
+                                            <option>CIVIL</option>
+                                            <option>PROCESAL</option>
+                                            <option>FAMILIA</option>
+                                            <option>BIENES</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex gap-4 pt-8">
+                                        <button type="button" onClick={() => setShowModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50 italic text-black">Cerrar</button>
+                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] transition-all italic text-black">Subir</button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    )}
                 </div>
             );
         }
