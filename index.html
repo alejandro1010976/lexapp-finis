@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LexApp - Finis Terrae Cloud</title>
-    <!-- Frameworks y Librerías -->
+    <!-- Frameworks -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -23,7 +23,7 @@
             --negro: #000000;      
             --blanco: #ffffff;      
         }
-        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; padding: 0; height: 100vh; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; overflow: hidden; }
         .font-serif { font-family: 'Playfair Display', serif; }
         .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
         .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
@@ -49,7 +49,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- TUS LLAVES DE FIREBASE ---
+        // --- TUS LLAVES REALES APLICADAS ---
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -67,7 +67,7 @@
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
-        } catch (e) { console.error("Error inicializando Firebase:", e); }
+        } catch (e) { console.error("Error Firebase:", e); }
 
         function App() {
             const [user, setUser] = useState(null);
@@ -80,6 +80,7 @@
             const chatEnd = useRef(null);
 
             useEffect(() => {
+                if (!auth) return;
                 const unsub = auth.onAuthStateChanged(u => {
                     setUser(u);
                     setAuthLoading(false);
@@ -88,16 +89,18 @@
             }, []);
 
             useEffect(() => {
-                if (!user) return;
+                if (!user || !db) return;
                 const pathBase = `artifacts/${appId}/public/data`;
 
+                // Cargar Materias
                 const unsubMaterias = db.collection(pathBase).doc('biblioteca_col').collection('archivos')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         list.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                         setMaterias(list);
-                    }, err => console.log("Cargando materias..."));
+                    }, err => console.log("Cargando..."));
 
+                // Cargar Chat
                 const unsubChat = db.collection(pathBase).doc('chat_col').collection('mensajes')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -119,7 +122,7 @@
             const loginGoogle = () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
                 auth.signInWithPopup(provider).catch(err => {
-                    alert("Error de conexión: " + err.message);
+                    alert("Error: Asegúrate de que 'lexappchile.netlify.app' esté en Dominios Autorizados de Firebase.\n\nDetalle: " + err.message);
                 });
             };
 
@@ -128,11 +131,9 @@
                 const formData = new FormData(e.target);
                 const titulo = formData.get('titulo');
                 const cat = formData.get('categoria');
-                
-                if(!user) return;
+                if(!user || !db) return;
 
-                const pathMaterias = `artifacts/${appId}/public/data/biblioteca_col/archivos`;
-                await db.collection(pathMaterias).add({
+                await db.collection(`artifacts/${appId}/public/data/biblioteca_col/archivos`).add({
                     titulo,
                     categoria: cat,
                     autor: user.displayName || 'Estudiante',
@@ -143,10 +144,9 @@
             };
 
             const sendChat = async () => {
-                if (!input.trim() || !user) return;
+                if (!input.trim() || !user || !db) return;
                 const t = input; setInput("");
-                const pathChat = `artifacts/${appId}/public/data/chat_col/mensajes`;
-                await db.collection(pathChat).add({
+                await db.collection(`artifacts/${appId}/public/data/chat_col/mensajes`).add({
                     text: t, 
                     user: user.displayName || 'Compañero', 
                     uid: user.uid, 
@@ -155,8 +155,8 @@
             };
 
             if (authLoading) return (
-                <div className="h-screen bg-[#00ced1] flex items-center justify-center font-black animate-pulse uppercase tracking-[0.3em]">
-                    Sincronizando LexApp...
+                <div className="h-screen bg-[#00ced1] flex items-center justify-center font-black animate-pulse uppercase tracking-[0.3em] text-black">
+                    Iniciando Nube de Santiago...
                 </div>
             );
 
@@ -173,6 +173,7 @@
                             >
                                 <i data-lucide="log-in"></i> Entrar con Gmail
                             </button>
+                            <p className="mt-8 text-[9px] font-black opacity-30 uppercase tracking-tighter">Conectado a lexapp-60f9b</p>
                         </div>
                     </div>
                 );
@@ -216,12 +217,12 @@
                         <div className="animate-up flex-grow">
                             {tab === 'biblioteca' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-20 text-4xl italic uppercase leading-tight text-black">La nube está vacía.<br/>¡Sincroniza un apunte!</p>}
+                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-20 text-4xl italic uppercase text-black">La nube de Santiago está vacía.</p>}
                                     {materias.map(m => (
-                                        <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard group cursor-pointer bg-white">
+                                        <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard group bg-white">
                                             <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{m.categoria}</span>
-                                            <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase leading-none text-black">{m.titulo}</h3>
-                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-4 text-black">Autor: {m.autor}</p>
+                                            <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase text-black">{m.titulo}</h3>
+                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-4 text-black italic">Autor: {m.autor}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -230,11 +231,10 @@
                             {tab === 'consultor' && (
                                 <div className="h-[600px] flex flex-col border-[8px] border-black rounded-[50px] overflow-hidden bg-gray-50 shadow-hard">
                                     <div className="flex-grow p-10 overflow-y-auto space-y-6">
-                                        {msgs.length === 0 && <p className="text-center opacity-20 font-black italic uppercase mt-20">El chat está vacío. Saluda al grupo.</p>}
                                         {msgs.map((m, i) => (
                                             <div key={i} className={`flex ${m.uid === user.uid ? 'justify-end' : 'justify-start'}`}>
                                                 <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white shadow-lg' : 'bg-[#00ced1] font-bold text-black'}`}>
-                                                    <p className={`text-[8px] font-black uppercase mb-1 ${m.uid === user.uid ? 'opacity-40 text-white' : 'opacity-40 text-black'}`}>{m.user}</p>
+                                                    <p className="text-[8px] font-black uppercase mb-1 opacity-40">{m.user}</p>
                                                     <p className="text-sm leading-relaxed">{m.text}</p>
                                                 </div>
                                             </div>
@@ -242,22 +242,20 @@
                                         <div ref={chatEnd} />
                                     </div>
                                     <div className="p-8 bg-white border-t-[8px] border-black flex gap-5">
-                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow font-black text-sm uppercase bg-white text-black" placeholder="Consulta al grupo..." />
-                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl transition-transform hover:scale-110 shadow-xl flex items-center justify-center"><i data-lucide="send"></i></button>
+                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow font-black text-sm uppercase bg-white text-black" placeholder="Duda al grupo..." />
+                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl hover:scale-110 shadow-xl flex items-center justify-center"><i data-lucide="send"></i></button>
                                     </div>
                                 </div>
                             )}
 
                             {tab === 'amigos' && (
                                 <div className="max-w-4xl bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard p-12">
-                                    <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter leading-none text-black">Compañeros Conectados</h3>
-                                    <div className="flex items-center gap-6 bg-[#00ced1] p-8 rounded-3xl border-4 border-black italic">
+                                    <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-black">Comunidad Online</h3>
+                                    <div className="flex items-center gap-6 bg-[#00ced1] p-8 rounded-3xl border-4 border-black italic shadow-lg">
                                         <div className="w-5 h-5 bg-black rounded-full animate-pulse"></div>
-                                        <span className="font-black uppercase text-xl text-black">{user.displayName || 'Tú (Sesión Activa)'}</span>
+                                        <span className="font-black uppercase text-xl text-black">{user.displayName} (Tú)</span>
                                     </div>
-                                    <p className="mt-10 text-xs font-bold opacity-40 uppercase italic tracking-widest leading-relaxed text-black">
-                                        Invita a tus compañeros de la Finis Terrae pasando el link de tu app.
-                                    </p>
+                                    <p className="mt-10 text-xs font-bold opacity-40 uppercase italic text-black">Conectado a la base de datos en southamerica-west1.</p>
                                 </div>
                             )}
                         </div>
@@ -270,8 +268,8 @@
                                 <h3 className="text-5xl font-serif font-black italic mb-8 uppercase text-black">Sincronizar</h3>
                                 <div className="space-y-6">
                                     <div>
-                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40 text-black">Materia o Tema</label>
-                                        <input name="titulo" className="w-full uppercase bg-white text-black" placeholder="Ej: Contrato de Arriendo..." required />
+                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40 text-black">Materia</label>
+                                        <input name="titulo" className="w-full uppercase bg-white text-black" placeholder="Ej: Contrato de Hipoteca..." required />
                                     </div>
                                     <div>
                                         <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40 text-black">Sección</label>
@@ -284,7 +282,7 @@
                                     </div>
                                     <div className="flex gap-4 pt-6">
                                         <button type="button" onClick={() => setShowUploadModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50 italic text-black">Cerrar</button>
-                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] transition-all italic text-black">Subir a Nube</button>
+                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] italic text-black">Subir</button>
                                     </div>
                                 </div>
                             </form>
