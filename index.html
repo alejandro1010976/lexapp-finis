@@ -3,56 +3,70 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LexApp - Finis Terrae Cloud</title>
+    <title>LexApp - Edición Editorial Jurídica</title>
     
-    <!-- Librerías de Alto Rendimiento -->
+    <!-- Librerías Críticas (Carga ultra-rápida) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Firebase SDK (Sincronizado con Santiago) -->
+    <!-- Firebase SDK (Versión Estable) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Playfair+Display:ital,wght@0,900;1,900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,900&family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     
     <style>
         :root { 
-            --turquesa: #00ced1; 
-            --negro: #1a1a1a;      
-            --blanco: #ffffff;      
+            --navy: #002147; 
+            --gold: #d4af37;
+            --white: #ffffff;
         }
-        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; padding: 0; overflow: hidden; }
+        body { 
+            margin: 0; 
+            padding: 0; 
+            background-color: var(--navy); 
+            font-family: 'Inter', sans-serif;
+            color: white;
+            overflow: hidden;
+        }
         .font-serif { font-family: 'Playfair Display', serif; }
-        .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
-        .border-main { border: 6px solid var(--negro); }
-        .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
+        .border-gold { border: 2px solid var(--gold); }
+        .shadow-gold { box-shadow: 8px 8px 0px 0px var(--gold); }
         
-        input, select, textarea {
-            border: 4px solid var(--negro) !important;
-            border-radius: 15px !important;
-            padding: 12px 20px !important;
-            outline: none !important;
-            font-weight: 700 !important;
+        /* Previene el pantallazo blanco si React tarda */
+        #fallback-loader {
+            position: fixed; inset: 0; background: #002147;
+            display: flex; flex-direction: column; items-center; justify-content: center;
+            z-index: 999; text-align: center;
         }
 
-        ::-webkit-scrollbar { width: 10px; }
-        ::-webkit-scrollbar-thumb { background: var(--turquesa); border: 2px solid var(--negro); border-radius: 10px; }
-        
-        .animate-up { animation: slideUp 0.4s ease-out forwards; }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .active-tab {
+            background-color: var(--gold) !important;
+            color: var(--navy) !important;
+            transform: scale(1.05);
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 10px; }
     </style>
 </head>
 <body>
+
+    <div id="fallback-loader">
+        <h1 class="text-6xl font-serif italic text-[#d4af37] mb-4">LexApp</h1>
+        <p class="uppercase tracking-[0.4em] text-white opacity-50 text-xs">Sincronizando con Santiago...</p>
+    </div>
+
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- TUS LLAVES REALES (Sincronizadas con lexapp-60f9b) ---
+        // --- TUS LLAVES REALES ---
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -69,222 +83,166 @@
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
-        } catch (e) { console.error("Error Firebase:", e); }
+        } catch (e) { console.error("Firebase Error:", e); }
 
         function App() {
             const [user, setUser] = useState(null);
+            const [status, setStatus] = useState('loading'); // loading, login, ready
             const [tab, setTab] = useState('biblioteca');
-            const [materias, setMaterias] = useState([]);
-            const [messages, setMessages] = useState([]);
+            const [data, setData] = useState([]);
+            const [msgs, setMsgs] = useState([]);
             const [input, setInput] = useState("");
-            const [showModal, setShowModal] = useState(false);
             const chatEnd = useRef(null);
 
-            // 1. Manejo de Sesión
             useEffect(() => {
                 const unsub = auth.onAuthStateChanged(u => {
                     setUser(u);
+                    setStatus(u ? 'ready' : 'login');
+                    document.getElementById('fallback-loader').style.display = 'none';
                 });
                 return () => unsub();
             }, []);
 
-            // 2. Sincronización de Datos en Tiempo Real
             useEffect(() => {
-                if (!user || !db) return;
-
-                const pathBase = `artifacts/${APP_UID}/public/data`;
-
-                // Biblioteca
-                const unsubMat = db.collection(pathBase).doc('biblioteca_col').collection('archivos')
+                if (status !== 'ready' || !user) return;
+                const path = `artifacts/${APP_UID}/public/data`;
+                
+                const unsub1 = db.collection(`${path}/biblioteca_col/archivos`)
                     .onSnapshot(snap => {
-                        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        list.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-                        setMaterias(list);
+                        setData(snap.docs.map(d => ({id: d.id, ...d.data()})));
                     });
 
-                // Chat
-                const unsubChat = db.collection(basePathChat).doc('mensajes_col').collection('lista')
-                // Simplificamos la ruta para evitar errores de permisos
-                const unsubMsg = db.collection(`${pathBase}/chat_col/mensajes`)
+                const unsub2 = db.collection(`${path}/chat_col/mensajes`)
                     .onSnapshot(snap => {
-                        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        list.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
-                        setMessages(list);
+                        const list = snap.docs.map(d => d.data());
+                        list.sort((a,b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+                        setMsgs(list);
                     });
 
-                return () => { unsubMat(); unsubMsg(); };
-            }, [user]);
+                return () => { unsub1(); unsub2(); };
+            }, [status, user]);
 
             useEffect(() => {
-                if (chatEnd.current) chatEnd.current.scrollIntoView({ behavior: 'smooth' });
-            }, [messages]);
-
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            }, [tab, user]);
+                if(chatEnd.current) chatEnd.current.scrollIntoView({ behavior: 'smooth' });
+                if(window.lucide) window.lucide.createIcons();
+            }, [msgs, tab, status]);
 
             const login = () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
-                auth.signInWithPopup(provider);
+                auth.signInWithPopup(provider).catch(e => alert(e.message));
             };
 
-            const sendChat = async () => {
-                if (!input.trim() || !user) return;
-                const txt = input; setInput("");
+            const send = async () => {
+                if(!input.trim()) return;
+                const t = input; setInput("");
                 await db.collection(`artifacts/${APP_UID}/public/data/chat_col/mensajes`).add({
-                    text: txt,
+                    text: t,
                     user: user.displayName || 'Estudiante',
                     uid: user.uid,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
             };
 
-            const uploadMateria = async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const t = formData.get('titulo');
-                const c = formData.get('categoria');
-                await db.collection(`artifacts/${APP_UID}/public/data/biblioteca_col/archivos`).add({
-                    titulo: t,
-                    categoria: c,
-                    autor: user.displayName || 'Estudiante',
-                    uid: user.uid,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                setShowModal(false);
-            };
+            if (status === 'loading') return null;
 
-            // Pantalla de Login
-            if (!user) {
-                return (
-                    <div className="h-screen bg-[#00ced1] flex flex-col items-center justify-center p-6 text-center">
-                        <h1 className="text-9xl font-serif font-black italic mb-4 text-black animate-up">LexApp</h1>
-                        <p className="mb-12 font-black uppercase tracking-[0.5em] opacity-40 text-[10px] text-black">Nube Jurídica Privada • Santiago</p>
-                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
-                            <h2 className="font-black text-2xl mb-8 uppercase italic leading-tight text-black">Acceso<br/>Estudiantes</h2>
-                            <button onClick={login} className="w-full bg-black text-[#00ced1] px-8 py-6 rounded-3xl font-black shadow-hard hover:scale-105 transition-all flex items-center justify-center gap-4 uppercase italic text-sm">
-                                <i data-lucide="log-in"></i> Entrar con Gmail
-                            </button>
-                        </div>
+            if (status === 'login') return (
+                <div className="h-screen w-screen flex flex-col items-center justify-center bg-[#002147] p-8">
+                    <h1 className="text-8xl font-serif italic text-[#d4af37] mb-2">LexApp</h1>
+                    <p className="text-[#d4af37] tracking-[0.5em] font-black text-xs mb-16 uppercase">Editorial Jurídica Digital</p>
+                    
+                    <div className="bg-white border-[6px] border-[#d4af37] p-12 rounded-[20px] shadow-gold max-w-sm w-full text-center">
+                        <h2 className="text-black font-black text-2xl mb-8 uppercase leading-tight italic">Acceso<br/>Estudiantes</h2>
+                        <button onClick={login} className="w-full bg-[#002147] text-[#d4af37] py-5 rounded-xl font-black text-sm shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-3">
+                            <i data-lucide="log-in"></i> ENTRAR CON GMAIL
+                        </button>
                     </div>
-                );
-            }
+                </div>
+            );
 
             return (
-                <div className="flex h-screen overflow-hidden bg-white">
-                    {/* SIDEBAR */}
-                    <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20 flex-shrink-0">
-                        <div className="mb-14">
-                            <h1 className="text-6xl font-serif font-black italic tracking-tighter text-black leading-none">LexApp</h1>
-                            <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60 text-black">U. Finis Terrae</p>
+                <div className="flex h-screen w-screen overflow-hidden bg-white text-black">
+                    {/* BARRA LATERAL ESTILO CÓDIGO */}
+                    <nav className="w-80 bg-[#002147] border-r-[10px] border-[#d4af37] p-8 flex flex-col z-20">
+                        <div className="mb-12 border-b-2 border-[#d4af37]/30 pb-8 text-center">
+                            <h1 className="text-5xl font-serif italic text-[#d4af37]">LexApp</h1>
+                            <p className="text-[10px] font-black text-white/50 tracking-widest mt-2 uppercase">U. Finis Terrae</p>
                         </div>
+
                         <div className="space-y-4 flex-grow">
                             {['biblioteca', 'consultor', 'amigos'].map(t => (
-                                <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-5 font-black uppercase text-sm rounded-2xl transition-all border-4 border-transparent hover:border-black ${tab === t ? 'active-tab shadow-hard' : 'text-black/50'}`}>
-                                    {t.toUpperCase()}
+                                <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-4 font-black uppercase text-xs rounded-xl border-2 border-transparent transition-all ${tab === t ? 'active-tab' : 'text-white/60 hover:text-white'}`}>
+                                    {t}
                                 </button>
                             ))}
                         </div>
-                        <div className="mt-auto bg-black p-5 rounded-3xl text-[#00ced1] flex items-center gap-3 border-2 border-white/10 shadow-2xl">
-                            {user.photoURL ? (
-                                <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" referrerPolicy="no-referrer" />
-                            ) : (
-                                <div className="w-10 h-10 rounded-full bg-[#00ced1] flex items-center justify-center text-black font-black">U</div>
-                            )}
+
+                        <div className="mt-auto bg-white/10 p-4 rounded-2xl border border-white/20 flex items-center gap-3">
+                            <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#d4af37]" referrerPolicy="no-referrer" />
                             <div className="truncate">
-                                <p className="text-[10px] font-black uppercase truncate">{user.displayName || 'Estudiante'}</p>
-                                <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 font-black hover:underline uppercase text-white tracking-widest">Cerrar Sesión</button>
+                                <p className="text-[10px] font-black text-[#d4af37] truncate uppercase">{user.displayName}</p>
+                                <button onClick={() => auth.signOut()} className="text-[8px] text-white/50 font-black uppercase hover:underline">Desconectar</button>
                             </div>
                         </div>
                     </nav>
 
-                    {/* MAIN */}
-                    <main className="flex-grow p-12 overflow-y-auto bg-white flex flex-col">
-                        <header className="flex justify-between items-end mb-16 flex-shrink-0">
+                    {/* ÁREA PRINCIPAL */}
+                    <main className="flex-grow p-12 overflow-y-auto bg-gray-50 flex flex-col">
+                        <header className="flex justify-between items-end mb-16">
                             <div>
-                                <h2 className="text-8xl font-serif font-black uppercase italic border-b-[15px] border-[#00ced1] leading-none text-black">{tab}</h2>
-                                <p className="text-[10px] font-black text-gray-300 mt-4 tracking-[0.4em] uppercase italic">Santiago Cloud Instance</p>
+                                <h2 className="text-7xl font-serif italic border-b-[8px] border-[#002147] inline-block leading-none text-[#002147] uppercase font-black">{tab}</h2>
+                                <p className="text-[10px] font-black text-gray-300 mt-4 tracking-widest uppercase">Nube Santiago (southamerica-west1)</p>
                             </div>
-                            <button onClick={() => setShowModal(true)} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] transition-all uppercase italic">+ SUBIR</button>
+                            <button className="bg-[#002147] text-[#d4af37] px-8 py-4 rounded-xl font-black shadow-gold hover:-translate-y-1 transition-all uppercase text-xs italic">+ Subir Material</button>
                         </header>
 
-                        <div className="animate-up flex-grow">
+                        <div className="flex-grow animate-up">
                             {tab === 'biblioteca' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                                    {materias.length === 0 && <p className="col-span-3 text-center py-24 font-black opacity-10 text-5xl italic uppercase text-black">Biblioteca vacía...<br/>¡Sincroniza un material!</p>}
-                                    {materias.map(m => (
-                                        <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard bg-white group cursor-pointer">
-                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-4 py-1 rounded-full uppercase tracking-widest">{m.categoria}</span>
-                                            <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase text-black leading-none">{m.titulo}</h3>
-                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-6 text-black italic tracking-widest">Autor: {m.autor}</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                    {data.length === 0 && <div className="col-span-3 text-center py-20 font-black opacity-10 text-5xl italic uppercase">La biblioteca está vacía</div>}
+                                    {data.map(m => (
+                                        <div key={m.id} className="p-8 bg-white border-4 border-[#002147] rounded-[30px] shadow-lg hover:shadow-gold transition-all cursor-pointer group">
+                                            <span className="bg-[#002147] text-[#d4af37] text-[10px] font-black px-3 py-1 rounded-full uppercase">{m.categoria}</span>
+                                            <h3 className="text-3xl font-serif italic mt-6 mb-2 text-black uppercase leading-tight">{m.titulo}</h3>
+                                            <p className="text-[9px] font-bold text-gray-400 mt-4 uppercase">Autor: {m.autor}</p>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
                             {tab === 'consultor' && (
-                                <div className="h-[600px] flex flex-col border-[8px] border-black rounded-[50px] overflow-hidden bg-gray-50 shadow-hard">
-                                    <div className="flex-grow p-10 overflow-y-auto space-y-6">
-                                        {messages.length === 0 && <p className="text-center opacity-20 font-black italic uppercase mt-20 text-black">No hay mensajes. Consulta al grupo.</p>}
-                                        {messages.map((m, i) => (
+                                <div className="h-[600px] flex flex-col border-[6px] border-[#002147] rounded-[40px] overflow-hidden bg-white shadow-gold">
+                                    <div className="flex-grow p-8 overflow-y-auto space-y-4">
+                                        {msgs.map((m, i) => (
                                             <div key={i} className={`flex ${m.uid === user.uid ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white shadow-xl' : 'bg-[#00ced1] font-bold text-black shadow-sm'}`}>
-                                                    <p className={`text-[8px] font-black uppercase mb-1 ${m.uid === user.uid ? 'opacity-40' : 'opacity-40'}`}>{m.user}</p>
-                                                    <p className="text-sm leading-relaxed">{m.text}</p>
+                                                <div className={`p-5 rounded-[25px] max-w-[80%] border-2 ${m.uid === user.uid ? 'bg-[#002147] text-white border-[#002147]' : 'bg-gray-100 text-[#002147] border-gray-200'}`}>
+                                                    <p className="text-[8px] font-black uppercase opacity-40 mb-1">{m.user}</p>
+                                                    <p className="text-sm font-bold">{m.text}</p>
                                                 </div>
                                             </div>
                                         ))}
                                         <div ref={chatEnd} />
                                     </div>
-                                    <div className="p-8 bg-white border-t-[8px] border-black flex gap-5">
-                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow font-black text-sm uppercase bg-white text-black border-none" placeholder="Duda al grupo de estudio..." />
-                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl hover:scale-110 shadow-xl flex items-center justify-center"><i data-lucide="send"></i></button>
+                                    <div className="p-6 bg-gray-50 border-t-4 border-[#002147] flex gap-4">
+                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && send()} className="flex-grow p-4 rounded-xl border-2 border-gray-200 font-black text-sm uppercase outline-none focus:border-[#d4af37]" placeholder="Escribe a tus colegas..." />
+                                        <button onClick={send} className="bg-[#002147] text-[#d4af37] p-5 rounded-xl shadow-lg hover:scale-110 transition-transform"><i data-lucide="send"></i></button>
                                     </div>
                                 </div>
                             )}
 
                             {tab === 'amigos' && (
-                                <div className="max-w-4xl bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard p-14">
-                                    <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-black leading-none">Comunidad LexApp</h3>
-                                    <div className="flex items-center gap-6 bg-[#00ced1] p-10 rounded-3xl border-4 border-black italic shadow-lg">
-                                        <div className="w-5 h-5 bg-black rounded-full animate-pulse"></div>
-                                        <span className="font-black uppercase text-2xl text-black">{user.displayName || 'Tú (Activo)'}</span>
+                                <div className="max-w-3xl bg-[#002147] p-12 rounded-[40px] text-[#d4af37] shadow-gold border-4 border-white">
+                                    <h3 className="text-4xl font-serif italic mb-8 uppercase">Comunidad LexApp</h3>
+                                    <div className="flex items-center gap-6 bg-white/10 p-6 rounded-2xl border-2 border-[#d4af37]">
+                                        <div className="w-5 h-5 bg-[#d4af37] rounded-full animate-pulse shadow-[0_0_15px_#d4af37]"></div>
+                                        <span className="font-black uppercase text-xl text-white">{user.displayName} (Online)</span>
                                     </div>
-                                    <p className="mt-12 text-xs font-bold opacity-30 uppercase italic text-black leading-relaxed tracking-[0.2em]">
-                                        Toda la base de datos es compartida en tiempo real mediante el servidor regional de Santiago.
+                                    <p className="mt-8 text-xs text-white/40 font-bold uppercase tracking-widest leading-relaxed">
+                                        El acceso está restringido a tu red de estudio vía Gmail.
                                     </p>
                                 </div>
                             )}
                         </div>
                     </main>
-
-                    {/* MODAL DE SUBIDA */}
-                    {showModal && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                            <form onSubmit={uploadMateria} className="bg-white border-[10px] border-black rounded-[60px] p-12 max-w-xl w-full shadow-2xl animate-up">
-                                <h3 className="text-5xl font-serif font-black italic mb-8 uppercase text-black">Sincronizar</h3>
-                                <div className="space-y-6 text-black">
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Materia / Tema</label>
-                                        <input name="titulo" className="w-full uppercase bg-white" placeholder="Ej: Contrato de Hipoteca..." required />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Categoría</label>
-                                        <select name="categoria" className="w-full bg-white font-black uppercase">
-                                            <option>CIVIL</option>
-                                            <option>PROCESAL</option>
-                                            <option>FAMILIA</option>
-                                            <option>BIENES</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex gap-4 pt-8">
-                                        <button type="button" onClick={() => setShowModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50 italic text-black">Cerrar</button>
-                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] transition-all italic text-black">Subir</button>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    )}
                 </div>
             );
         }
