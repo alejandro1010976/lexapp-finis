@@ -26,11 +26,9 @@
         body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; }
         .font-serif { font-family: 'Playfair Display', serif; }
         .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
-        .border-main { border: 6px solid var(--negro); }
         .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
         
-        /* Estilo para los inputs neobrutalistas */
-        input, textarea, select {
+        input, select {
             border: 4px solid var(--negro) !important;
             border-radius: 15px !important;
             padding: 12px 20px !important;
@@ -51,7 +49,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- TUS LLAVES REALES DE FIREBASE ---
+        // --- TUS LLAVES DE FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -66,74 +64,65 @@
         let db, auth;
 
         // Inicialización
-        if (!firebase.apps.length) {
-            firebase.initializeApp(firebaseConfig);
-        }
-        auth = firebase.auth();
-        db = firebase.firestore();
+        try {
+            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+        } catch (e) { console.error("Error inicializando Firebase:", e); }
 
         function App() {
             const [user, setUser] = useState(null);
+            const [authLoading, setAuthLoading] = useState(true);
             const [tab, setTab] = useState('biblioteca');
             const [materias, setMaterias] = useState([]);
             const [msgs, setMsgs] = useState([]);
             const [input, setInput] = useState("");
-            const [loading, setLoading] = useState(false);
             const [showUploadModal, setShowUploadModal] = useState(false);
             const chatEnd = useRef(null);
 
-            // 1. Manejo de Autenticación
+            // 1. Escuchar estado de usuario
             useEffect(() => {
                 const unsub = auth.onAuthStateChanged(u => {
-                    if (u) setUser(u);
-                    else auth.signInAnonymously();
+                    setUser(u);
+                    setAuthLoading(false);
                 });
                 return () => unsub();
             }, []);
 
-            // 2. Sincronización de Datos (Biblioteca y Chat)
+            // 2. Cargar datos en tiempo real (Solo si hay usuario)
             useEffect(() => {
                 if (!user) return;
-
                 const pathBase = `artifacts/${appId}/public/data`;
 
-                // Escuchar Materias
                 const unsubMaterias = db.collection(pathBase).doc('biblioteca_col').collection('archivos')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        // Ordenamos por fecha en el cliente (Regla 2)
                         list.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                         setMaterias(list);
-                    }, e => console.error("Error Firestore Materias:", e));
+                    }, err => console.error("Error Firestore (Posible falta de reglas):", err));
 
-                // Escuchar Chat
                 const unsubChat = db.collection(pathBase).doc('chat_col').collection('mensajes')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         list.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
                         setMsgs(list);
-                    }, e => console.error("Error Firestore Chat:", e));
+                    });
 
                 return () => { unsubMaterias(); unsubChat(); };
             }, [user]);
 
             useEffect(() => chatEnd.current?.scrollIntoView({ behavior: 'smooth' }), [msgs]);
 
-            // Acciones
             const loginGoogle = () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
-                auth.signInWithPopup(provider);
-            };
-
-            const sendChat = async () => {
-                if (!input.trim() || !user) return;
-                const text = input; setInput("");
-                const pathChat = `artifacts/${appId}/public/data/chat_col/mensajes`;
-                await db.collection(pathChat).add({
-                    text,
-                    user: user.displayName || 'Estudiante',
-                    uid: user.uid,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                auth.signInWithPopup(provider).catch(err => {
+                    if (err.code === 'auth/unauthorized-domain') {
+                        alert("ERROR: Debes agregar tu URL de Netlify a 'Dominios Autorizados' en la consola de Firebase (Authentication > Settings).");
+                    } else if (err.code === 'auth/admin-restricted-operation') {
+                        alert("ERROR: El proveedor de Google está desactivado en Firebase Console.");
+                    } else {
+                        alert("Error de conexión: " + err.message);
+                    }
                 });
             };
 
@@ -142,81 +131,99 @@
                 const formData = new FormData(e.target);
                 const titulo = formData.get('titulo');
                 const cat = formData.get('categoria');
-
-                if (!titulo) return;
-
+                
                 const pathMaterias = `artifacts/${appId}/public/data/biblioteca_col/archivos`;
                 await db.collection(pathMaterias).add({
                     titulo,
                     categoria: cat,
-                    autor: user.displayName || 'Anónimo',
+                    autor: user.displayName || 'Estudiante',
                     uid: user.uid,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
                 setShowUploadModal(false);
             };
 
-            if (!user) return (
-                <div className="h-screen bg-[#00ced1] flex items-center justify-center font-black animate-pulse">
-                    CONECTANDO A LA NUBE DE SANTIAGO...
+            const sendChat = async () => {
+                if (!input.trim()) return;
+                const t = input; setInput("");
+                const pathChat = `artifacts/${appId}/public/data/chat_col/mensajes`;
+                await db.collection(pathChat).add({
+                    text: t, 
+                    user: user.displayName || 'Compañero', 
+                    uid: user.uid, 
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            };
+
+            if (authLoading) return (
+                <div className="h-screen bg-[#00ced1] flex items-center justify-center font-black animate-pulse uppercase tracking-[0.3em]">
+                    Sincronizando LexApp...
                 </div>
             );
+
+            // Pantalla de Login (Si no hay sesión activa)
+            if (!user) {
+                return (
+                    <div className="h-screen bg-[#00ced1] flex flex-col items-center justify-center p-6 text-center">
+                        <h1 className="text-8xl font-serif font-black italic mb-4">LexApp</h1>
+                        <p className="mb-12 font-black uppercase tracking-[0.4em] opacity-60 text-xs italic">Nube Jurídica Privada • Santiago</p>
+                        
+                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
+                            <p className="font-black text-2xl mb-8 uppercase italic leading-tight">Acceso<br/>Estudiantes</p>
+                            <button 
+                                onClick={loginGoogle}
+                                className="w-full bg-black text-[#00ced1] px-8 py-6 rounded-3xl font-black shadow-hard hover:scale-105 transition-all flex items-center justify-center gap-4 uppercase italic text-sm"
+                            >
+                                <i data-lucide="log-in"></i> Entrar con Gmail
+                            </button>
+                            <div className="mt-10 p-4 bg-gray-50 rounded-2xl border-2 border-black/10 text-[9px] font-bold uppercase opacity-50 leading-relaxed">
+                                Recuerda autorizar el dominio de Netlify en la consola de Firebase para activar la nube.
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
 
             return (
                 <div className="flex h-screen overflow-hidden">
                     {/* SIDEBAR */}
                     <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20">
                         <div className="mb-14">
-                            <h1 className="text-6xl font-serif font-black italic tracking-tighter text-black">LexApp</h1>
-                            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-black/60">U. Finis Terrae</p>
+                            <h1 className="text-6xl font-serif font-black italic tracking-tighter">LexApp</h1>
+                            <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Online • Finis Terrae</p>
                         </div>
-                        
                         <div className="space-y-4 flex-grow">
-                            {['biblioteca', 'consultor', 'examen', 'amigos'].map(t => (
-                                <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-5 font-black uppercase text-sm rounded-2xl transition-all border-4 border-transparent hover:border-black ${tab === t ? 'active-tab shadow-hard' : ''}`}>
+                            {['biblioteca', 'consultor', 'amigos'].map(t => (
+                                <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-5 font-black uppercase text-sm rounded-2xl transition-all border-4 border-transparent hover:border-black ${tab === t ? 'active-tab shadow-hard' : 'text-black/60'}`}>
                                     {t.toUpperCase()}
                                 </button>
                             ))}
                         </div>
-
-                        <div className="mt-auto pt-6 border-t-4 border-black/20">
-                            {user.isAnonymous ? (
-                                <button onClick={loginGoogle} className="w-full bg-black text-[#00ced1] p-5 rounded-3xl font-black shadow-hard hover:scale-105 transition-all text-xs">
-                                    INGRESAR CON GMAIL
-                                </button>
-                            ) : (
-                                <div className="bg-black p-4 rounded-3xl text-[#00ced1] flex items-center gap-3">
-                                    <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" />
-                                    <div className="truncate">
-                                        <p className="text-[10px] font-black uppercase truncate">{user.displayName}</p>
-                                        <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 uppercase font-bold hover:underline">Salir</button>
-                                    </div>
-                                </div>
-                            )}
+                        <div className="mt-auto bg-black p-4 rounded-3xl text-[#00ced1] flex items-center gap-3">
+                            <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" />
+                            <div className="truncate">
+                                <p className="text-[10px] font-black uppercase truncate">{user.displayName}</p>
+                                <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 font-black hover:underline uppercase">Desconectar</button>
+                            </div>
                         </div>
                     </nav>
 
                     {/* MAIN */}
-                    <main className="flex-grow p-12 overflow-y-auto relative bg-white">
+                    <main className="flex-grow p-12 overflow-y-auto bg-white">
                         <header className="flex justify-between items-end mb-16">
                             <h2 className="text-8xl font-serif font-black uppercase italic border-b-[15px] border-[#00ced1] leading-none">{tab}</h2>
-                            <button onClick={() => setShowUploadModal(true)} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] active:translate-y-0 transition-all uppercase">
-                                + SUBIR APUNTE
-                            </button>
+                            <button onClick={() => setShowUploadModal(true)} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] active:translate-y-0 transition-all uppercase italic">+ SUBIR</button>
                         </header>
 
                         <div className="animate-up">
                             {tab === 'biblioteca' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-20 text-4xl italic">La biblioteca está vacía...</p>}
+                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-20 text-4xl italic uppercase leading-tight">La nube de Santiago está vacía.<br/>¡Sincroniza el primer apunte!</p>}
                                     {materias.map(m => (
                                         <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard group cursor-pointer">
-                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded-full">{m.categoria}</span>
+                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{m.categoria}</span>
                                             <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase leading-none">{m.titulo}</h3>
-                                            <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-4">Subido por: {m.autor}</p>
-                                            <div className="flex gap-2 mt-8">
-                                                <button className="bg-black text-white px-4 py-2 rounded-xl text-[10px] font-black">DESCARGAR</button>
-                                            </div>
+                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-4">Autor: {m.autor}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -227,50 +234,31 @@
                                     <div className="flex-grow p-10 overflow-y-auto space-y-6">
                                         {msgs.map((m, i) => (
                                             <div key={i} className={`flex ${m.uid === user.uid ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white' : 'bg-[#00ced1] font-bold'}`}>
-                                                    <p className="text-[9px] font-black uppercase opacity-40 mb-2">{m.user}</p>
-                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                                                <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white' : 'bg-[#00ced1] font-bold shadow-sm'}`}>
+                                                    <p className="text-[8px] font-black uppercase opacity-40 mb-1">{m.user}</p>
+                                                    <p className="text-sm leading-relaxed">{m.text}</p>
                                                 </div>
                                             </div>
                                         ))}
                                         <div ref={chatEnd} />
                                     </div>
                                     <div className="p-8 bg-white border-t-[8px] border-black flex gap-5">
-                                        <input 
-                                            value={input} 
-                                            onChange={e => setInput(e.target.value)} 
-                                            onKeyPress={e => e.key === 'Enter' && sendChat()} 
-                                            className="flex-grow" 
-                                            placeholder="Consulta al grupo..." 
-                                        />
-                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl shadow-xl transition-transform hover:scale-110">
-                                            <i data-lucide="send"></i>
-                                        </button>
+                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow font-black text-sm uppercase" placeholder="Consulta al grupo..." />
+                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl transition-transform hover:scale-110 shadow-xl"><i data-lucide="send"></i></button>
                                     </div>
                                 </div>
                             )}
 
-                            {tab === 'examen' && <div className="p-20 text-center font-black opacity-10 text-6xl italic">Módulo de Examen Próximamente...</div>}
-
                             {tab === 'amigos' && (
-                                <div className="max-w-4xl space-y-8">
-                                    <div className="bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard">
-                                        <table className="w-full text-left font-black">
-                                            <thead className="bg-black text-[#00ced1] text-xs uppercase italic">
-                                                <tr><th className="p-8">Estudiante / Gmail</th><th className="p-8">Estado</th></tr>
-                                            </thead>
-                                            <tbody className="text-lg">
-                                                <tr className="border-b-4 border-black/5 hover:bg-cyan-50">
-                                                    <td className="p-8 italic">{user.displayName || 'Tú (Sesión Local)'}</td>
-                                                    <td className="p-8"><span className="bg-[#00ced1] border-2 border-black px-3 py-1 rounded-full text-[10px] uppercase">Online</span></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
+                                <div className="max-w-4xl bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard p-12">
+                                    <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter leading-none">Compañeros de Grado</h3>
+                                    <div className="flex items-center gap-6 bg-[#00ced1] p-8 rounded-3xl border-4 border-black italic">
+                                        <div className="w-5 h-5 bg-black rounded-full animate-pulse"></div>
+                                        <span className="font-black uppercase text-xl">{user.displayName} (Tú)</span>
                                     </div>
-                                    <div className="flex gap-4">
-                                        <input className="flex-grow" placeholder="Invitar compañero via Gmail..." />
-                                        <button className="bg-black text-[#00ced1] px-10 py-6 rounded-[30px] font-black uppercase italic shadow-hard">INVITAR</button>
-                                    </div>
+                                    <p className="mt-10 text-xs font-bold opacity-40 uppercase italic tracking-widest leading-relaxed">
+                                        Cuando tus amigos entren con su Gmail, sus perfiles aparecerán aquí automáticamente y compartirán la misma base de datos.
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -280,25 +268,24 @@
                     {showUploadModal && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
                             <form onSubmit={handleNewUpload} className="bg-white border-[10px] border-black rounded-[60px] p-12 max-w-xl w-full shadow-2xl animate-up">
-                                <h3 className="text-5xl font-serif font-black italic mb-8 uppercase">Nuevo Apunte</h3>
+                                <h3 className="text-5xl font-serif font-black italic mb-8 uppercase">Sincronizar</h3>
                                 <div className="space-y-6">
                                     <div>
-                                        <label className="block text-xs font-black uppercase mb-2">Título de la Materia</label>
-                                        <input name="titulo" className="w-full" placeholder="Ej: Teoría de la Ley, Posesión..." required />
+                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Materia o Tema</label>
+                                        <input name="titulo" className="w-full uppercase" placeholder="Ej: Contrato de Arriendo..." required />
                                     </div>
                                     <div>
-                                        <label className="block text-xs font-black uppercase mb-2">Categoría</label>
-                                        <select name="categoria" className="w-full bg-white">
+                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Sección</label>
+                                        <select name="categoria" className="w-full bg-white font-black uppercase">
                                             <option>CIVIL</option>
                                             <option>PROCESAL</option>
                                             <option>FAMILIA</option>
                                             <option>BIENES</option>
-                                            <option>OTRO</option>
                                         </select>
                                     </div>
-                                    <div className="flex gap-4 pt-4">
-                                        <button type="button" onClick={() => setShowUploadModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50">Cancelar</button>
-                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] active:translate-y-0 transition-all">Subir a la Nube</button>
+                                    <div className="flex gap-4 pt-6">
+                                        <button type="button" onClick={() => setShowUploadModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50 italic">Cerrar</button>
+                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] transition-all italic">Subir a Nube</button>
                                     </div>
                                 </div>
                             </form>
