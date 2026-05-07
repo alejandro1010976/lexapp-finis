@@ -10,7 +10,8 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Firebase SDK Compat -->
+    
+    <!-- Firebase SDK Compat (Versión Estable) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -23,7 +24,7 @@
             --negro: #000000;      
             --blanco: #ffffff;      
         }
-        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; overflow: hidden; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; padding: 0; height: 100vh; width: 100vw; overflow: hidden; }
         .font-serif { font-family: 'Playfair Display', serif; }
         .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
         .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
@@ -49,7 +50,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- TUS LLAVES REALES APLICADAS ---
+        // --- TUS LLAVES REALES ---
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -60,132 +61,168 @@
             measurementId: "G-X9GV8RBH41"
         };
 
-        const appId = 'lex-app-finis-2026';
+        const APP_ID_PATH = 'lex-app-finis-2026';
         let db, auth;
 
         try {
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
-        } catch (e) { console.error("Error Firebase:", e); }
+        } catch (e) { 
+            console.error("Error crítico Firebase:", e); 
+        }
 
         function App() {
             const [user, setUser] = useState(null);
-            const [authLoading, setAuthLoading] = useState(true);
+            const [status, setStatus] = useState('loading'); // 'loading', 'login', 'ready', 'error'
+            const [errorMsg, setErrorMsg] = useState('');
             const [tab, setTab] = useState('biblioteca');
             const [materias, setMaterias] = useState([]);
             const [msgs, setMsgs] = useState([]);
             const [input, setInput] = useState("");
-            const [showUploadModal, setShowUploadModal] = useState(false);
+            const [showModal, setShowModal] = useState(false);
             const chatEnd = useRef(null);
 
+            // 1. Efecto de Autenticación
             useEffect(() => {
-                if (!auth) return;
+                if (!auth) {
+                    setStatus('error');
+                    setErrorMsg('Firebase no se pudo inicializar. Revisa tu Config.');
+                    return;
+                }
+
                 const unsub = auth.onAuthStateChanged(u => {
-                    setUser(u);
-                    setAuthLoading(false);
+                    if (u) {
+                        setUser(u);
+                        setStatus('ready');
+                    } else {
+                        setStatus('login');
+                    }
+                }, err => {
+                    setStatus('error');
+                    setErrorMsg(err.message);
                 });
                 return () => unsub();
             }, []);
 
+            // 2. Efecto de Carga de Datos
             useEffect(() => {
-                if (!user || !db) return;
-                const pathBase = `artifacts/${appId}/public/data`;
+                if (status !== 'ready' || !user || !db) return;
 
-                // Cargar Materias
-                const unsubMaterias = db.collection(pathBase).doc('biblioteca_col').collection('archivos')
+                const base = `artifacts/${APP_ID_PATH}/public/data`;
+
+                // Sincronizar Materias
+                const unsubMat = db.collection(base).doc('biblioteca_col').collection('archivos')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         list.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                         setMaterias(list);
-                    }, err => console.log("Cargando..."));
+                    }, err => {
+                        console.warn("Fallo lectura materias (Reglas?):", err);
+                    });
 
-                // Cargar Chat
-                const unsubChat = db.collection(pathBase).doc('chat_col').collection('mensajes')
+                // Sincronizar Chat
+                const unsubChat = db.collection(base).doc('chat_col').collection('mensajes')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         list.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
                         setMsgs(list);
+                    }, err => {
+                        console.warn("Fallo lectura chat:", err);
                     });
 
-                return () => { unsubMaterias(); unsubChat(); };
-            }, [user]);
+                return () => { unsubMat(); unsubChat(); };
+            }, [status, user]);
 
+            // 3. Auxiliares UI
             useEffect(() => {
                 if (chatEnd.current) chatEnd.current.scrollIntoView({ behavior: 'smooth' });
             }, [msgs]);
 
             useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            }, [tab, user]);
+                const timer = setTimeout(() => {
+                    if (window.lucide) window.lucide.createIcons();
+                }, 500);
+                return () => clearTimeout(timer);
+            }, [tab, status]);
 
-            const loginGoogle = () => {
+            const handleLogin = () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
                 auth.signInWithPopup(provider).catch(err => {
-                    alert("Error: Asegúrate de que 'lexappchile.netlify.app' esté en Dominios Autorizados de Firebase.\n\nDetalle: " + err.message);
+                    alert("Error Login: " + err.message);
                 });
             };
 
-            const handleNewUpload = async (e) => {
+            const handleSend = async () => {
+                if (!input.trim() || !user) return;
+                const txt = input; setInput("");
+                try {
+                    await db.collection(`artifacts/${APP_ID_PATH}/public/data/chat_col/mensajes`).add({
+                        text: txt,
+                        user: user.displayName || 'Estudiante',
+                        uid: user.uid,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (e) { alert("Error al enviar: " + e.message); }
+            };
+
+            const handleUpload = async (e) => {
                 e.preventDefault();
                 const formData = new FormData(e.target);
-                const titulo = formData.get('titulo');
-                const cat = formData.get('categoria');
-                if(!user || !db) return;
-
-                await db.collection(`artifacts/${appId}/public/data/biblioteca_col/archivos`).add({
-                    titulo,
-                    categoria: cat,
-                    autor: user.displayName || 'Estudiante',
-                    uid: user.uid,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
-                setShowUploadModal(false);
+                const t = formData.get('titulo');
+                const c = formData.get('categoria');
+                try {
+                    await db.collection(`artifacts/${APP_ID_PATH}/public/data/biblioteca_col/archivos`).add({
+                        titulo: t,
+                        categoria: c,
+                        autor: user.displayName || 'Estudiante',
+                        uid: user.uid,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    setShowModal(false);
+                } catch (e) { alert("Error al subir: " + e.message); }
             };
 
-            const sendChat = async () => {
-                if (!input.trim() || !user || !db) return;
-                const t = input; setInput("");
-                await db.collection(`artifacts/${appId}/public/data/chat_col/mensajes`).add({
-                    text: t, 
-                    user: user.displayName || 'Compañero', 
-                    uid: user.uid, 
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
-            };
-
-            if (authLoading) return (
-                <div className="h-screen bg-[#00ced1] flex items-center justify-center font-black animate-pulse uppercase tracking-[0.3em] text-black">
-                    Iniciando Nube de Santiago...
+            // VISTAS DE ESTADO
+            if (status === 'loading') return (
+                <div className="h-screen flex items-center justify-center bg-[#00ced1] text-black font-black uppercase tracking-widest animate-pulse">
+                    Sincronizando con Santiago...
                 </div>
             );
 
-            if (!user) {
-                return (
-                    <div className="h-screen bg-[#00ced1] flex flex-col items-center justify-center p-6 text-center">
-                        <h1 className="text-8xl font-serif font-black italic mb-4 text-black leading-none">LexApp</h1>
-                        <p className="mb-12 font-black uppercase tracking-[0.4em] opacity-60 text-xs italic text-black">Nube Jurídica Privada • Santiago</p>
-                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
-                            <p className="font-black text-2xl mb-8 uppercase italic leading-tight text-black">Acceso<br/>Estudiantes</p>
-                            <button 
-                                onClick={loginGoogle}
-                                className="w-full bg-black text-[#00ced1] px-8 py-6 rounded-3xl font-black shadow-hard hover:scale-105 transition-all flex items-center justify-center gap-4 uppercase italic text-sm"
-                            >
-                                <i data-lucide="log-in"></i> Entrar con Gmail
-                            </button>
-                            <p className="mt-8 text-[9px] font-black opacity-30 uppercase tracking-tighter">Conectado a lexapp-60f9b</p>
-                        </div>
-                    </div>
-                );
-            }
+            if (status === 'error') return (
+                <div className="h-screen flex flex-col items-center justify-center bg-red-500 text-white p-10 text-center">
+                    <h1 className="text-4xl font-black mb-4">ERROR CRÍTICO</h1>
+                    <p className="bg-black/20 p-4 rounded-xl font-mono text-xs">{errorMsg}</p>
+                    <button onClick={() => window.location.reload()} className="mt-8 bg-white text-red-600 px-6 py-3 rounded-full font-black">REINTENTAR</button>
+                </div>
+            );
 
+            if (status === 'login') return (
+                <div className="h-screen bg-[#00ced1] flex flex-col items-center justify-center p-6 text-center">
+                    <h1 className="text-8xl font-serif font-black italic mb-4 text-black animate-up">LexApp</h1>
+                    <p className="mb-12 font-black uppercase tracking-[0.4em] opacity-60 text-[10px] text-black">Nube Jurídica Privada • Santiago</p>
+                    <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
+                        <h2 className="font-black text-2xl mb-8 uppercase italic text-black">Acceso Estudiantes</h2>
+                        <button 
+                            onClick={handleLogin}
+                            className="w-full bg-black text-[#00ced1] px-8 py-6 rounded-3xl font-black shadow-hard hover:scale-105 transition-all flex items-center justify-center gap-4 uppercase italic text-sm"
+                        >
+                            <i data-lucide="log-in"></i> Entrar con Gmail
+                        </button>
+                        <p className="mt-8 text-[9px] font-black opacity-30 uppercase tracking-tighter">Powered by southamerica-west1</p>
+                    </div>
+                </div>
+            );
+
+            // VISTA PRINCIPAL (READY)
             return (
                 <div className="flex h-screen overflow-hidden bg-white">
-                    {/* SIDEBAR */}
+                    {/* BARRA LATERAL */}
                     <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20 flex-shrink-0">
                         <div className="mb-14">
-                            <h1 className="text-6xl font-serif font-black italic tracking-tighter text-black leading-none">LexApp</h1>
-                            <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60 text-black">Online • Finis Terrae</p>
+                            <h1 className="text-6xl font-serif font-black italic tracking-tighter text-black">LexApp</h1>
+                            <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60 text-black">U. Finis Terrae</p>
                         </div>
                         <div className="space-y-4 flex-grow">
                             {['biblioteca', 'consultor', 'amigos'].map(t => (
@@ -195,29 +232,29 @@
                             ))}
                         </div>
                         <div className="mt-auto bg-black p-4 rounded-3xl text-[#00ced1] flex items-center gap-3 border-2 border-white/10">
-                            {user.photoURL ? (
+                            {user?.photoURL ? (
                                 <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" referrerPolicy="no-referrer" />
                             ) : (
                                 <div className="w-10 h-10 rounded-full bg-[#00ced1] flex items-center justify-center text-black font-black">U</div>
                             )}
                             <div className="truncate">
-                                <p className="text-[10px] font-black uppercase truncate text-[#00ced1]">{user.displayName || 'Estudiante'}</p>
+                                <p className="text-[10px] font-black uppercase truncate text-[#00ced1]">{user?.displayName || 'Estudiante'}</p>
                                 <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 font-black hover:underline uppercase text-white">Desconectar</button>
                             </div>
                         </div>
                     </nav>
 
-                    {/* MAIN */}
+                    {/* CONTENIDO */}
                     <main className="flex-grow p-12 overflow-y-auto bg-white flex flex-col">
                         <header className="flex justify-between items-end mb-16 flex-shrink-0">
                             <h2 className="text-8xl font-serif font-black uppercase italic border-b-[15px] border-[#00ced1] leading-none text-black">{tab}</h2>
-                            <button onClick={() => setShowUploadModal(true)} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] transition-all uppercase italic">+ SUBIR</button>
+                            <button onClick={() => setShowModal(true)} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] transition-all uppercase italic">+ SUBIR</button>
                         </header>
 
                         <div className="animate-up flex-grow">
                             {tab === 'biblioteca' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-20 text-4xl italic uppercase text-black">La nube de Santiago está vacía.</p>}
+                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-20 text-4xl italic uppercase text-black">La nube está vacía.</p>}
                                     {materias.map(m => (
                                         <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard group bg-white">
                                             <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{m.categoria}</span>
@@ -242,8 +279,8 @@
                                         <div ref={chatEnd} />
                                     </div>
                                     <div className="p-8 bg-white border-t-[8px] border-black flex gap-5">
-                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow font-black text-sm uppercase bg-white text-black" placeholder="Duda al grupo..." />
-                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl hover:scale-110 shadow-xl flex items-center justify-center"><i data-lucide="send"></i></button>
+                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend()} className="flex-grow font-black text-sm uppercase bg-white text-black" placeholder="Duda al grupo..." />
+                                        <button onClick={handleSend} className="bg-black text-[#00ced1] p-6 rounded-3xl hover:scale-110 shadow-xl flex items-center justify-center"><i data-lucide="send"></i></button>
                                     </div>
                                 </div>
                             )}
@@ -253,27 +290,27 @@
                                     <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-black">Comunidad Online</h3>
                                     <div className="flex items-center gap-6 bg-[#00ced1] p-8 rounded-3xl border-4 border-black italic shadow-lg">
                                         <div className="w-5 h-5 bg-black rounded-full animate-pulse"></div>
-                                        <span className="font-black uppercase text-xl text-black">{user.displayName} (Tú)</span>
+                                        <span className="font-black uppercase text-xl text-black">{user?.displayName || 'Tú (Activo)'}</span>
                                     </div>
-                                    <p className="mt-10 text-xs font-bold opacity-40 uppercase italic text-black">Conectado a la base de datos en southamerica-west1.</p>
+                                    <p className="mt-10 text-xs font-bold opacity-40 uppercase italic text-black">Sincronizado con lexapp-60f9b en Santiago.</p>
                                 </div>
                             )}
                         </div>
                     </main>
 
-                    {/* MODAL DE SUBIDA */}
-                    {showUploadModal && (
+                    {/* MODAL */}
+                    {showModal && (
                         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                            <form onSubmit={handleNewUpload} className="bg-white border-[10px] border-black rounded-[60px] p-12 max-w-xl w-full shadow-2xl animate-up">
+                            <form onSubmit={handleUpload} className="bg-white border-[10px] border-black rounded-[60px] p-12 max-w-xl w-full shadow-2xl animate-up">
                                 <h3 className="text-5xl font-serif font-black italic mb-8 uppercase text-black">Sincronizar</h3>
-                                <div className="space-y-6">
+                                <div className="space-y-6 text-black">
                                     <div>
-                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40 text-black">Materia</label>
-                                        <input name="titulo" className="w-full uppercase bg-white text-black" placeholder="Ej: Contrato de Hipoteca..." required />
+                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Materia</label>
+                                        <input name="titulo" className="w-full uppercase bg-white" placeholder="Ej: Contrato de Hipoteca..." required />
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40 text-black">Sección</label>
-                                        <select name="categoria" className="w-full bg-white font-black uppercase text-black">
+                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Sección</label>
+                                        <select name="categoria" className="w-full bg-white font-black uppercase">
                                             <option>CIVIL</option>
                                             <option>PROCESAL</option>
                                             <option>FAMILIA</option>
@@ -281,8 +318,8 @@
                                         </select>
                                     </div>
                                     <div className="flex gap-4 pt-6">
-                                        <button type="button" onClick={() => setShowUploadModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50 italic text-black">Cerrar</button>
-                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] italic text-black">Subir</button>
+                                        <button type="button" onClick={() => setShowModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50 italic">Cerrar</button>
+                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] italic">Subir</button>
                                     </div>
                                 </div>
                             </form>
