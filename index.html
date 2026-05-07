@@ -4,13 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LexApp - Finis Terrae Cloud</title>
-    <!-- Frameworks -->
+    <!-- Frameworks y Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Firebase SDK -->
+    <!-- Firebase SDK Compat -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -19,16 +19,30 @@
     
     <style>
         :root { 
-            --color-principal: #00ced1; 
-            --color-fondo: #ffffff;      
-            --color-texto: #000000;      
+            --turquesa: #00ced1; 
+            --negro: #000000;      
+            --blanco: #ffffff;      
         }
-        body { font-family: 'Inter', sans-serif; background-color: var(--color-fondo); color: var(--color-texto); margin: 0; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; }
         .font-serif { font-family: 'Playfair Display', serif; }
-        .shadow-hard { box-shadow: 10px 10px 0px 0px var(--color-texto); }
-        .active-tab { background-color: var(--color-texto) !important; color: var(--color-principal) !important; transform: translateX(10px); }
+        .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
+        .border-main { border: 6px solid var(--negro); }
+        .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
+        
+        /* Estilo para los inputs neobrutalistas */
+        input, textarea, select {
+            border: 4px solid var(--negro) !important;
+            border-radius: 15px !important;
+            padding: 12px 20px !important;
+            outline: none !important;
+            font-weight: 700 !important;
+        }
+
         ::-webkit-scrollbar { width: 10px; }
-        ::-webkit-scrollbar-thumb { background: var(--color-principal); border: 2px solid var(--color-texto); border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: var(--turquesa); border: 2px solid var(--negro); border-radius: 10px; }
+        
+        .animate-up { animation: slideUp 0.4s ease-out forwards; }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     </style>
 </head>
 <body>
@@ -37,29 +51,26 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- CONFIGURACIÓN DE TU PROYECTO (PEGA TUS LLAVES AQUÍ) ---
+        // --- TUS LLAVES REALES DE FIREBASE ---
         const firebaseConfig = {
-            apiKey: "TU_API_KEY",
-            authDomain: "TU_PROYECTO.firebaseapp.com",
-            projectId: "TU_PROYECTO_ID",
-            storageBucket: "TU_PROYECTO.appspot.com",
-            messagingSenderId: "TU_SENDER_ID",
-            appId: "TU_APP_ID"
+            apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
+            authDomain: "lexapp-60f9b.firebaseapp.com",
+            projectId: "lexapp-60f9b",
+            storageBucket: "lexapp-60f9b.firebasestorage.app",
+            messagingSenderId: "1068688632619",
+            appId: "1:1068688632619:web:a36a96895d7ede1645b36e",
+            measurementId: "G-X9GV8RBH41"
         };
 
         const appId = 'lex-app-finis-2026';
         let db, auth;
-        let isFirebaseReady = false;
 
-        // Inicialización segura
-        try {
-            if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "TU_API_KEY") {
-                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-                auth = firebase.auth();
-                db = firebase.firestore();
-                isFirebaseReady = true;
-            }
-        } catch (e) { console.error("Error Firebase:", e); }
+        // Inicialización
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        auth = firebase.auth();
+        db = firebase.firestore();
 
         function App() {
             const [user, setUser] = useState(null);
@@ -67,145 +78,232 @@
             const [materias, setMaterias] = useState([]);
             const [msgs, setMsgs] = useState([]);
             const [input, setInput] = useState("");
+            const [loading, setLoading] = useState(false);
+            const [showUploadModal, setShowUploadModal] = useState(false);
             const chatEnd = useRef(null);
 
+            // 1. Manejo de Autenticación
             useEffect(() => {
-                if (!isFirebaseReady) return;
+                const unsub = auth.onAuthStateChanged(u => {
+                    if (u) setUser(u);
+                    else auth.signInAnonymously();
+                });
+                return () => unsub();
+            }, []);
 
-                // 1. Auth Listener
-                const unsubAuth = auth.onAuthStateChanged(u => setUser(u));
+            // 2. Sincronización de Datos (Biblioteca y Chat)
+            useEffect(() => {
+                if (!user) return;
 
-                // 2. Data Listener (Rutas según Regla 1)
-                const dataPath = `artifacts/${appId}/public/data`;
-                
-                const unsubMaterias = db.collection(dataPath).doc('materias_col').collection('lista')
+                const pathBase = `artifacts/${appId}/public/data`;
+
+                // Escuchar Materias
+                const unsubMaterias = db.collection(pathBase).doc('biblioteca_col').collection('archivos')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        // Ordenamos por fecha en el cliente (Regla 2)
                         list.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                         setMaterias(list);
-                    });
+                    }, e => console.error("Error Firestore Materias:", e));
 
-                const unsubChat = db.collection(dataPath).doc('chat_col').collection('mensajes')
+                // Escuchar Chat
+                const unsubChat = db.collection(pathBase).doc('chat_col').collection('mensajes')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         list.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
                         setMsgs(list);
-                    });
+                    }, e => console.error("Error Firestore Chat:", e));
 
-                return () => { unsubAuth(); unsubMaterias(); unsubChat(); };
-            }, []);
+                return () => { unsubMaterias(); unsubChat(); };
+            }, [user]);
 
             useEffect(() => chatEnd.current?.scrollIntoView({ behavior: 'smooth' }), [msgs]);
 
-            const handleLogin = () => {
+            // Acciones
+            const loginGoogle = () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
-                auth.signInWithPopup(provider).catch(e => alert("Habilita Google Login en Firebase Console"));
-            };
-
-            const handleUpload = async () => {
-                const nombre = prompt("Nombre de la materia:");
-                if (!nombre) return;
-                const cat = (prompt("Categoría (CIVIL/PROCESAL):") || "GENERAL").toUpperCase();
-                
-                const dataPath = `artifacts/${appId}/public/data`;
-                await db.collection(dataPath).doc('materias_col').collection('lista').add({
-                    t: nombre, cat, user: user.displayName, timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                auth.signInWithPopup(provider);
             };
 
             const sendChat = async () => {
-                if (!input.trim()) return;
-                const t = input; setInput("");
-                const dataPath = `artifacts/${appId}/public/data`;
-                await db.collection(dataPath).doc('chat_col').collection('mensajes').add({
-                    text: t, user: user.displayName, uid: user.uid, timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                if (!input.trim() || !user) return;
+                const text = input; setInput("");
+                const pathChat = `artifacts/${appId}/public/data/chat_col/mensajes`;
+                await db.collection(pathChat).add({
+                    text,
+                    user: user.displayName || 'Estudiante',
+                    uid: user.uid,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
                 });
             };
 
-            if (!user) {
-                return (
-                    <div className="h-screen flex flex-col items-center justify-center bg-[#00ced1] p-6 text-center">
-                        <h1 className="text-7xl font-serif font-black italic mb-4">LexApp</h1>
-                        <p className="mb-10 font-bold uppercase tracking-widest opacity-70 italic">Nube Jurídica Activa (Santiago)</p>
-                        <button onClick={handleLogin} className="bg-black text-[#00ced1] px-10 py-5 rounded-[30px] font-black shadow-hard hover:scale-105 transition-all flex items-center gap-3">
-                            <i data-lucide="log-in"></i> INGRESAR CON GMAIL
-                        </button>
-                        {!isFirebaseReady && <p className="mt-8 text-[10px] bg-white/30 p-2 rounded">⚠️ FALTA CONFIGURAR LLAVES DE FIREBASE EN EL CÓDIGO</p>}
-                    </div>
-                );
-            }
+            const handleNewUpload = async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const titulo = formData.get('titulo');
+                const cat = formData.get('categoria');
+
+                if (!titulo) return;
+
+                const pathMaterias = `artifacts/${appId}/public/data/biblioteca_col/archivos`;
+                await db.collection(pathMaterias).add({
+                    titulo,
+                    categoria: cat,
+                    autor: user.displayName || 'Anónimo',
+                    uid: user.uid,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                setShowUploadModal(false);
+            };
+
+            if (!user) return (
+                <div className="h-screen bg-[#00ced1] flex items-center justify-center font-black animate-pulse">
+                    CONECTANDO A LA NUBE DE SANTIAGO...
+                </div>
+            );
 
             return (
                 <div className="flex h-screen overflow-hidden">
+                    {/* SIDEBAR */}
                     <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20">
-                        <h1 className="text-5xl font-serif font-black italic mb-10 tracking-tighter">LexApp</h1>
+                        <div className="mb-14">
+                            <h1 className="text-6xl font-serif font-black italic tracking-tighter text-black">LexApp</h1>
+                            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-black/60">U. Finis Terrae</p>
+                        </div>
+                        
                         <div className="space-y-4 flex-grow">
                             {['biblioteca', 'consultor', 'examen', 'amigos'].map(t => (
                                 <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-5 font-black uppercase text-sm rounded-2xl transition-all border-4 border-transparent hover:border-black ${tab === t ? 'active-tab shadow-hard' : ''}`}>
-                                    {t}
+                                    {t.toUpperCase()}
                                 </button>
                             ))}
                         </div>
-                        <div className="mt-auto bg-black p-4 rounded-3xl text-[#00ced1] flex items-center gap-3">
-                            <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" />
-                            <div className="truncate">
-                                <p className="text-[10px] font-black uppercase truncate">{user.displayName}</p>
-                                <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 hover:underline uppercase font-bold">Cerrar Sesión</button>
-                            </div>
+
+                        <div className="mt-auto pt-6 border-t-4 border-black/20">
+                            {user.isAnonymous ? (
+                                <button onClick={loginGoogle} className="w-full bg-black text-[#00ced1] p-5 rounded-3xl font-black shadow-hard hover:scale-105 transition-all text-xs">
+                                    INGRESAR CON GMAIL
+                                </button>
+                            ) : (
+                                <div className="bg-black p-4 rounded-3xl text-[#00ced1] flex items-center gap-3">
+                                    <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" />
+                                    <div className="truncate">
+                                        <p className="text-[10px] font-black uppercase truncate">{user.displayName}</p>
+                                        <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 uppercase font-bold hover:underline">Salir</button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </nav>
 
-                    <main className="flex-grow p-12 overflow-y-auto bg-white">
+                    {/* MAIN */}
+                    <main className="flex-grow p-12 overflow-y-auto relative bg-white">
                         <header className="flex justify-between items-end mb-16">
                             <h2 className="text-8xl font-serif font-black uppercase italic border-b-[15px] border-[#00ced1] leading-none">{tab}</h2>
-                            <button onClick={handleUpload} className="bg-black text-[#00ced1] px-8 py-4 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] active:translate-y-0 transition-all">+ SUBIR</button>
+                            <button onClick={() => setShowUploadModal(true)} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] active:translate-y-0 transition-all uppercase">
+                                + SUBIR APUNTE
+                            </button>
                         </header>
 
-                        <div className="animate-in">
+                        <div className="animate-up">
                             {tab === 'biblioteca' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-20 text-4xl italic">La biblioteca está vacía...</p>}
                                     {materias.map(m => (
                                         <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard group cursor-pointer">
-                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-2 py-1 rounded mb-4 inline-block">{m.cat}</span>
-                                            <h3 className="text-4xl font-serif font-black italic mb-4 uppercase">{m.t}</h3>
-                                            <p className="text-[9px] font-bold opacity-40 uppercase tracking-widest">Por: {m.user}</p>
+                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded-full">{m.categoria}</span>
+                                            <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase leading-none">{m.titulo}</h3>
+                                            <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-4">Subido por: {m.autor}</p>
+                                            <div className="flex gap-2 mt-8">
+                                                <button className="bg-black text-white px-4 py-2 rounded-xl text-[10px] font-black">DESCARGAR</button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
 
                             {tab === 'consultor' && (
-                                <div className="h-[650px] flex flex-col border-8 border-black rounded-[50px] overflow-hidden bg-gray-50 shadow-hard">
+                                <div className="h-[650px] flex flex-col border-[8px] border-black rounded-[50px] overflow-hidden bg-gray-50 shadow-hard">
                                     <div className="flex-grow p-10 overflow-y-auto space-y-6">
                                         {msgs.map((m, i) => (
                                             <div key={i} className={`flex ${m.uid === user.uid ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white shadow-lg' : 'bg-[#00ced1] font-bold shadow-sm'}`}>
-                                                    <p className="text-[8px] font-black uppercase opacity-40 mb-2">{m.user}</p>
-                                                    <p className="text-sm leading-relaxed">{m.text}</p>
+                                                <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white' : 'bg-[#00ced1] font-bold'}`}>
+                                                    <p className="text-[9px] font-black uppercase opacity-40 mb-2">{m.user}</p>
+                                                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.text}</p>
                                                 </div>
                                             </div>
                                         ))}
                                         <div ref={chatEnd} />
                                     </div>
                                     <div className="p-8 bg-white border-t-[8px] border-black flex gap-5">
-                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && sendChat()} className="flex-grow p-6 border-4 border-black rounded-3xl font-black outline-none focus:bg-cyan-50" placeholder="Escribe al grupo..." />
-                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl"><i data-lucide="send"></i></button>
+                                        <input 
+                                            value={input} 
+                                            onChange={e => setInput(e.target.value)} 
+                                            onKeyPress={e => e.key === 'Enter' && sendChat()} 
+                                            className="flex-grow" 
+                                            placeholder="Consulta al grupo..." 
+                                        />
+                                        <button onClick={sendChat} className="bg-black text-[#00ced1] p-6 rounded-3xl shadow-xl transition-transform hover:scale-110">
+                                            <i data-lucide="send"></i>
+                                        </button>
                                     </div>
                                 </div>
                             )}
-                            
+
+                            {tab === 'examen' && <div className="p-20 text-center font-black opacity-10 text-6xl italic">Módulo de Examen Próximamente...</div>}
+
                             {tab === 'amigos' && (
-                                <div className="max-w-4xl bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard p-10">
-                                    <h3 className="text-3xl font-black italic mb-6">ESTUDIANTES CONECTADOS</h3>
-                                    <p className="opacity-60 mb-8 font-bold italic">Tus amigos verán los mismos archivos que tú una vez que entren con su Gmail.</p>
-                                    <div className="flex items-center gap-4 bg-gray-100 p-6 rounded-3xl border-4 border-black italic">
-                                        <div className="w-4 h-4 bg-green-500 rounded-full animate-pulse"></div>
-                                        <span className="font-black uppercase">{user.displayName} (Tú)</span>
+                                <div className="max-w-4xl space-y-8">
+                                    <div className="bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard">
+                                        <table className="w-full text-left font-black">
+                                            <thead className="bg-black text-[#00ced1] text-xs uppercase italic">
+                                                <tr><th className="p-8">Estudiante / Gmail</th><th className="p-8">Estado</th></tr>
+                                            </thead>
+                                            <tbody className="text-lg">
+                                                <tr className="border-b-4 border-black/5 hover:bg-cyan-50">
+                                                    <td className="p-8 italic">{user.displayName || 'Tú (Sesión Local)'}</td>
+                                                    <td className="p-8"><span className="bg-[#00ced1] border-2 border-black px-3 py-1 rounded-full text-[10px] uppercase">Online</span></td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <input className="flex-grow" placeholder="Invitar compañero via Gmail..." />
+                                        <button className="bg-black text-[#00ced1] px-10 py-6 rounded-[30px] font-black uppercase italic shadow-hard">INVITAR</button>
                                     </div>
                                 </div>
                             )}
                         </div>
                     </main>
+
+                    {/* MODAL DE SUBIDA */}
+                    {showUploadModal && (
+                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+                            <form onSubmit={handleNewUpload} className="bg-white border-[10px] border-black rounded-[60px] p-12 max-w-xl w-full shadow-2xl animate-up">
+                                <h3 className="text-5xl font-serif font-black italic mb-8 uppercase">Nuevo Apunte</h3>
+                                <div className="space-y-6">
+                                    <div>
+                                        <label className="block text-xs font-black uppercase mb-2">Título de la Materia</label>
+                                        <input name="titulo" className="w-full" placeholder="Ej: Teoría de la Ley, Posesión..." required />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-black uppercase mb-2">Categoría</label>
+                                        <select name="categoria" className="w-full bg-white">
+                                            <option>CIVIL</option>
+                                            <option>PROCESAL</option>
+                                            <option>FAMILIA</option>
+                                            <option>BIENES</option>
+                                            <option>OTRO</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex gap-4 pt-4">
+                                        <button type="button" onClick={() => setShowUploadModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50">Cancelar</button>
+                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] active:translate-y-0 transition-all">Subir a la Nube</button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    )}
                 </div>
             );
         }
