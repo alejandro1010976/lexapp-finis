@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LexApp - Finis Terrae Cloud</title>
+    <title>LexApp - Diagnóstico de Nube</title>
     <!-- Frameworks -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -11,7 +11,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- Firebase SDK Compat (Versión Estable) -->
+    <!-- Firebase SDK (Versión Compat) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
@@ -19,27 +19,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Playfair+Display:ital,wght@0,900;1,900&display=swap" rel="stylesheet">
     
     <style>
-        :root { 
-            --turquesa: #00ced1; 
-            --negro: #000000;      
-            --blanco: #ffffff;      
-        }
-        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; padding: 0; height: 100vh; width: 100vw; overflow: hidden; }
+        :root { --turquesa: #00ced1; --negro: #000000; --blanco: #ffffff; }
+        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; padding: 0; overflow: hidden; }
         .font-serif { font-family: 'Playfair Display', serif; }
         .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
         .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
-        
-        input, select {
-            border: 4px solid var(--negro) !important;
-            border-radius: 15px !important;
-            padding: 12px 20px !important;
-            outline: none !important;
-            font-weight: 700 !important;
-        }
-
-        ::-webkit-scrollbar { width: 10px; }
-        ::-webkit-scrollbar-thumb { background: var(--turquesa); border: 2px solid var(--negro); border-radius: 10px; }
-        
         .animate-up { animation: slideUp 0.4s ease-out forwards; }
         @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     </style>
@@ -50,7 +34,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- TUS LLAVES REALES ---
+        // --- CONFIGURACIÓN FIREBASE (LLAVES ACTUALES) ---
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -61,37 +45,36 @@
             measurementId: "G-X9GV8RBH41"
         };
 
-        const APP_ID_PATH = 'lex-app-finis-2026';
+        const APP_PATH = 'lex-app-finis-2026';
         let db, auth;
 
+        // Inicialización ultra-segura
         try {
             if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
             auth = firebase.auth();
             db = firebase.firestore();
-        } catch (e) { 
-            console.error("Error crítico Firebase:", e); 
-        }
+        } catch (e) { console.error("Firebase Init Error:", e); }
 
         function App() {
             const [user, setUser] = useState(null);
             const [status, setStatus] = useState('loading'); // 'loading', 'login', 'ready', 'error'
-            const [errorMsg, setErrorMsg] = useState('');
+            const [errorLog, setErrorLog] = useState('');
             const [tab, setTab] = useState('biblioteca');
             const [materias, setMaterias] = useState([]);
             const [msgs, setMsgs] = useState([]);
             const [input, setInput] = useState("");
-            const [showModal, setShowModal] = useState(false);
             const chatEnd = useRef(null);
 
-            // 1. Efecto de Autenticación
+            // 1. Escuchar sesión
             useEffect(() => {
                 if (!auth) {
                     setStatus('error');
-                    setErrorMsg('Firebase no se pudo inicializar. Revisa tu Config.');
+                    setErrorLog('Error: Firebase no se pudo inicializar. Revisa las llaves.');
                     return;
                 }
 
                 const unsub = auth.onAuthStateChanged(u => {
+                    console.log("Auth State Changed:", u);
                     if (u) {
                         setUser(u);
                         setStatus('ready');
@@ -100,56 +83,53 @@
                     }
                 }, err => {
                     setStatus('error');
-                    setErrorMsg(err.message);
+                    setErrorLog('Error de Autenticación: ' + err.message);
                 });
                 return () => unsub();
             }, []);
 
-            // 2. Efecto de Carga de Datos
+            // 2. Cargar datos
             useEffect(() => {
                 if (status !== 'ready' || !user || !db) return;
 
-                const base = `artifacts/${APP_ID_PATH}/public/data`;
+                const base = `artifacts/${APP_PATH}/public/data`;
 
-                // Sincronizar Materias
+                // Listener de Materias
                 const unsubMat = db.collection(base).doc('biblioteca_col').collection('archivos')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         list.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                         setMaterias(list);
                     }, err => {
-                        console.warn("Fallo lectura materias (Reglas?):", err);
+                        console.error("Firestore Error (Materias):", err);
+                        // No bloqueamos la app, solo logueamos
                     });
 
-                // Sincronizar Chat
+                // Listener de Chat
                 const unsubChat = db.collection(base).doc('chat_col').collection('mensajes')
                     .onSnapshot(snap => {
                         const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         list.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
                         setMsgs(list);
-                    }, err => {
-                        console.warn("Fallo lectura chat:", err);
-                    });
+                    }, err => console.error("Firestore Error (Chat):", err));
 
                 return () => { unsubMat(); unsubChat(); };
             }, [status, user]);
 
-            // 3. Auxiliares UI
             useEffect(() => {
                 if (chatEnd.current) chatEnd.current.scrollIntoView({ behavior: 'smooth' });
             }, [msgs]);
 
+            // Forzar actualización de iconos Lucide
             useEffect(() => {
-                const timer = setTimeout(() => {
-                    if (window.lucide) window.lucide.createIcons();
-                }, 500);
-                return () => clearTimeout(timer);
+                if (window.lucide) window.lucide.createIcons();
             }, [tab, status]);
 
-            const handleLogin = () => {
+            const loginGoogle = () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
                 auth.signInWithPopup(provider).catch(err => {
-                    alert("Error Login: " + err.message);
+                    setStatus('error');
+                    setErrorLog(`Error de Google Login: ${err.message}. \n\n¿Agregaste ${window.location.hostname} a dominios autorizados en Firebase?`);
                 });
             };
 
@@ -157,7 +137,7 @@
                 if (!input.trim() || !user) return;
                 const txt = input; setInput("");
                 try {
-                    await db.collection(`artifacts/${APP_ID_PATH}/public/data/chat_col/mensajes`).add({
+                    await db.collection(`artifacts/${APP_PATH}/public/data/chat_col/mensajes`).add({
                         text: txt,
                         user: user.displayName || 'Estudiante',
                         uid: user.uid,
@@ -166,100 +146,96 @@
                 } catch (e) { alert("Error al enviar: " + e.message); }
             };
 
-            const handleUpload = async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target);
-                const t = formData.get('titulo');
-                const c = formData.get('categoria');
-                try {
-                    await db.collection(`artifacts/${APP_ID_PATH}/public/data/biblioteca_col/archivos`).add({
-                        titulo: t,
-                        categoria: c,
-                        autor: user.displayName || 'Estudiante',
-                        uid: user.uid,
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                    setShowModal(false);
-                } catch (e) { alert("Error al subir: " + e.message); }
-            };
+            // --- VISTAS DE ESTADO ---
 
-            // VISTAS DE ESTADO
-            if (status === 'loading') return (
-                <div className="h-screen flex items-center justify-center bg-[#00ced1] text-black font-black uppercase tracking-widest animate-pulse">
-                    Sincronizando con Santiago...
-                </div>
-            );
-
-            if (status === 'error') return (
-                <div className="h-screen flex flex-col items-center justify-center bg-red-500 text-white p-10 text-center">
-                    <h1 className="text-4xl font-black mb-4">ERROR CRÍTICO</h1>
-                    <p className="bg-black/20 p-4 rounded-xl font-mono text-xs">{errorMsg}</p>
-                    <button onClick={() => window.location.reload()} className="mt-8 bg-white text-red-600 px-6 py-3 rounded-full font-black">REINTENTAR</button>
-                </div>
-            );
-
-            if (status === 'login') return (
-                <div className="h-screen bg-[#00ced1] flex flex-col items-center justify-center p-6 text-center">
-                    <h1 className="text-8xl font-serif font-black italic mb-4 text-black animate-up">LexApp</h1>
-                    <p className="mb-12 font-black uppercase tracking-[0.4em] opacity-60 text-[10px] text-black">Nube Jurídica Privada • Santiago</p>
-                    <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
-                        <h2 className="font-black text-2xl mb-8 uppercase italic text-black">Acceso Estudiantes</h2>
-                        <button 
-                            onClick={handleLogin}
-                            className="w-full bg-black text-[#00ced1] px-8 py-6 rounded-3xl font-black shadow-hard hover:scale-105 transition-all flex items-center justify-center gap-4 uppercase italic text-sm"
-                        >
-                            <i data-lucide="log-in"></i> Entrar con Gmail
-                        </button>
-                        <p className="mt-8 text-[9px] font-black opacity-30 uppercase tracking-tighter">Powered by southamerica-west1</p>
+            if (status === 'loading') {
+                return (
+                    <div className="h-screen flex flex-col items-center justify-center bg-[#00ced1] text-black">
+                        <div className="text-2xl font-black animate-pulse">CARGANDO LEXAPP...</div>
+                        <div className="text-[10px] mt-4 opacity-50">Sincronizando con lexapp-60f9b</div>
                     </div>
-                </div>
-            );
+                );
+            }
 
-            // VISTA PRINCIPAL (READY)
+            if (status === 'error') {
+                return (
+                    <div className="h-screen flex flex-col items-center justify-center bg-white p-10">
+                        <div className="bg-red-100 border-l-8 border-red-600 p-8 rounded-2xl shadow-xl max-w-2xl">
+                            <h1 className="text-2xl font-black text-red-600 mb-4 uppercase">Error Detectado</h1>
+                            <p className="font-mono text-sm bg-white/50 p-4 rounded-lg break-words">{errorLog}</p>
+                            <div className="mt-8 flex gap-4">
+                                <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-6 py-3 rounded-xl font-black shadow-lg">REINTENTAR</button>
+                                <button onClick={() => setStatus('login')} className="bg-black text-white px-6 py-3 rounded-xl font-black">VOLVER AL LOGIN</button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (status === 'login') {
+                return (
+                    <div className="h-screen bg-[#00ced1] flex flex-col items-center justify-center p-6">
+                        <div className="text-center mb-12">
+                            <h1 className="text-8xl font-serif font-black italic text-black leading-none animate-up">LexApp</h1>
+                            <p className="mt-4 font-black uppercase tracking-[0.4em] opacity-40 text-xs">U. Finis Terrae • Santiago</p>
+                        </div>
+                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
+                            <h2 className="font-black text-2xl mb-8 uppercase italic">Acceso Seguro</h2>
+                            <button 
+                                onClick={loginGoogle}
+                                className="w-full bg-black text-[#00ced1] px-8 py-6 rounded-3xl font-black shadow-hard hover:scale-105 transition-all flex items-center justify-center gap-4 uppercase italic text-sm"
+                            >
+                                <i data-lucide="log-in"></i> Entrar con Gmail
+                            </button>
+                            <p className="mt-8 text-[9px] font-black opacity-30 text-center uppercase">Asegúrate de estar en el dominio autorizado</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            // --- VISTA PRINCIPAL ---
             return (
-                <div className="flex h-screen overflow-hidden bg-white">
-                    {/* BARRA LATERAL */}
+                <div className="flex h-screen bg-white overflow-hidden">
+                    {/* SIDEBAR */}
                     <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20 flex-shrink-0">
                         <div className="mb-14">
                             <h1 className="text-6xl font-serif font-black italic tracking-tighter text-black">LexApp</h1>
-                            <p className="text-[10px] font-black uppercase tracking-[0.4em] opacity-60 text-black">U. Finis Terrae</p>
+                            <p className="text-[10px] font-black uppercase opacity-60 text-black">Online • Chile 2026</p>
                         </div>
                         <div className="space-y-4 flex-grow">
                             {['biblioteca', 'consultor', 'amigos'].map(t => (
-                                <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-5 font-black uppercase text-sm rounded-2xl transition-all border-4 border-transparent hover:border-black ${tab === t ? 'active-tab shadow-hard' : 'text-black/60'}`}>
+                                <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-5 font-black uppercase text-sm rounded-2xl transition-all border-4 border-transparent hover:border-black ${tab === t ? 'active-tab shadow-hard' : 'text-black/40'}`}>
                                     {t.toUpperCase()}
                                 </button>
                             ))}
                         </div>
-                        <div className="mt-auto bg-black p-4 rounded-3xl text-[#00ced1] flex items-center gap-3 border-2 border-white/10">
-                            {user?.photoURL ? (
-                                <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" referrerPolicy="no-referrer" />
-                            ) : (
-                                <div className="w-10 h-10 rounded-full bg-[#00ced1] flex items-center justify-center text-black font-black">U</div>
-                            )}
+                        <div className="mt-auto bg-black p-4 rounded-3xl text-[#00ced1] flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-[#00ced1] border-2 border-black flex items-center justify-center">
+                                {user.photoURL ? <img src={user.photoURL} className="rounded-full" referrerPolicy="no-referrer" /> : <span className="font-black text-black">U</span>}
+                            </div>
                             <div className="truncate">
-                                <p className="text-[10px] font-black uppercase truncate text-[#00ced1]">{user?.displayName || 'Estudiante'}</p>
+                                <p className="text-[10px] font-black uppercase truncate text-[#00ced1]">{user.displayName || 'Estudiante'}</p>
                                 <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 font-black hover:underline uppercase text-white">Desconectar</button>
                             </div>
                         </div>
                     </nav>
 
-                    {/* CONTENIDO */}
-                    <main className="flex-grow p-12 overflow-y-auto bg-white flex flex-col">
+                    {/* MAIN AREA */}
+                    <main className="flex-grow p-12 overflow-y-auto flex flex-col bg-white">
                         <header className="flex justify-between items-end mb-16 flex-shrink-0">
-                            <h2 className="text-8xl font-serif font-black uppercase italic border-b-[15px] border-[#00ced1] leading-none text-black">{tab}</h2>
-                            <button onClick={() => setShowModal(true)} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] transition-all uppercase italic">+ SUBIR</button>
+                            <h2 className="text-8xl font-serif font-black uppercase italic border-b-[15px] border-[#00ced1] leading-none">{tab}</h2>
+                            <button className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] transition-all uppercase italic">+ SUBIR</button>
                         </header>
 
                         <div className="animate-up flex-grow">
                             {tab === 'biblioteca' && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-20 text-4xl italic uppercase text-black">La nube está vacía.</p>}
+                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-10 text-4xl italic uppercase">Biblioteca vacía en Santiago.</p>}
                                     {materias.map(m => (
-                                        <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard group bg-white">
-                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest">{m.categoria}</span>
-                                            <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase text-black">{m.titulo}</h3>
-                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-4 text-black italic">Autor: {m.autor}</p>
+                                        <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard group cursor-pointer bg-white">
+                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded-full uppercase">{m.categoria}</span>
+                                            <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase text-black leading-none">{m.titulo}</h3>
+                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-4 italic">Autor: {m.autor}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -279,7 +255,7 @@
                                         <div ref={chatEnd} />
                                     </div>
                                     <div className="p-8 bg-white border-t-[8px] border-black flex gap-5">
-                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend()} className="flex-grow font-black text-sm uppercase bg-white text-black" placeholder="Duda al grupo..." />
+                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend()} className="flex-grow font-black text-sm uppercase bg-white border-none outline-none" placeholder="Duda al grupo de estudio..." />
                                         <button onClick={handleSend} className="bg-black text-[#00ced1] p-6 rounded-3xl hover:scale-110 shadow-xl flex items-center justify-center"><i data-lucide="send"></i></button>
                                     </div>
                                 </div>
@@ -287,44 +263,18 @@
 
                             {tab === 'amigos' && (
                                 <div className="max-w-4xl bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard p-12">
-                                    <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-black">Comunidad Online</h3>
+                                    <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-black">Red Finis Terrae</h3>
                                     <div className="flex items-center gap-6 bg-[#00ced1] p-8 rounded-3xl border-4 border-black italic shadow-lg">
                                         <div className="w-5 h-5 bg-black rounded-full animate-pulse"></div>
-                                        <span className="font-black uppercase text-xl text-black">{user?.displayName || 'Tú (Activo)'}</span>
+                                        <span className="font-black uppercase text-xl text-black">{user.displayName} (Tú)</span>
                                     </div>
-                                    <p className="mt-10 text-xs font-bold opacity-40 uppercase italic text-black">Sincronizado con lexapp-60f9b en Santiago.</p>
+                                    <p className="mt-10 text-xs font-bold opacity-40 uppercase italic text-black leading-relaxed">
+                                        Esta aplicación usa la base de datos de Santiago de Chile (southamerica-west1) para una velocidad máxima entre compañeros.
+                                    </p>
                                 </div>
                             )}
                         </div>
                     </main>
-
-                    {/* MODAL */}
-                    {showModal && (
-                        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-                            <form onSubmit={handleUpload} className="bg-white border-[10px] border-black rounded-[60px] p-12 max-w-xl w-full shadow-2xl animate-up">
-                                <h3 className="text-5xl font-serif font-black italic mb-8 uppercase text-black">Sincronizar</h3>
-                                <div className="space-y-6 text-black">
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Materia</label>
-                                        <input name="titulo" className="w-full uppercase bg-white" placeholder="Ej: Contrato de Hipoteca..." required />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-black uppercase mb-2 italic opacity-40">Sección</label>
-                                        <select name="categoria" className="w-full bg-white font-black uppercase">
-                                            <option>CIVIL</option>
-                                            <option>PROCESAL</option>
-                                            <option>FAMILIA</option>
-                                            <option>BIENES</option>
-                                        </select>
-                                    </div>
-                                    <div className="flex gap-4 pt-6">
-                                        <button type="button" onClick={() => setShowModal(false)} className="flex-grow py-5 border-4 border-black rounded-3xl font-black uppercase hover:bg-red-50 italic">Cerrar</button>
-                                        <button type="submit" className="flex-grow py-5 bg-[#00ced1] border-4 border-black rounded-3xl font-black uppercase shadow-hard hover:translate-y-[-4px] italic">Subir</button>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    )}
                 </div>
             );
         }
