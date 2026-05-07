@@ -5,66 +5,41 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LexApp - Finis Terrae</title>
     
-    <!-- Librerías Críticas (Carga Garantizada) -->
+    <!-- Scripts de carga garantizada (Iguales a la versión morada) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
-    <!-- Firebase SDK (Versión Estable) -->
+    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;900&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@900&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet">
     
     <style>
-        :root { --turquesa: #00ced1; --negro: #000000; --blanco: #ffffff; }
-        body { margin: 0; padding: 0; background-color: var(--turquesa); font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; width: 100vw; }
-        .font-serif { font-family: 'Playfair Display', serif; }
-        .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
-        .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
-        
-        /* Pantalla de carga (Turquesa) */
-        #boot-loader {
-            position: fixed; inset: 0; background: var(--turquesa);
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            z-index: 9999; text-align: center;
-        }
-
-        .animate-up { animation: slideUp 0.4s ease-out forwards; }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        body { background-color: #00ced1; font-family: 'Inter', sans-serif; margin: 0; padding: 0; color: black; overflow: hidden; }
+        .shadow-hard { box-shadow: 10px 10px 0px 0px rgba(0,0,0,1); }
+        .btn-turquesa { background: black; color: #00ced1; padding: 20px 40px; border-radius: 20px; font-weight: 900; cursor: pointer; transition: 0.2s; }
+        .btn-turquesa:hover { transform: scale(1.05); }
+        input { border: 4px solid black !important; border-radius: 15px !important; outline: none !important; }
     </style>
 </head>
 <body>
 
-    <!-- Cargador Inicial (Se oculta por JS) -->
-    <div id="boot-loader">
-        <h1 class="text-7xl font-serif italic mb-4">LexApp</h1>
-        <p class="uppercase tracking-[0.4em] font-black text-xs opacity-50">Sincronizando con Santiago...</p>
-        <div id="debug-error" class="hidden mt-4 p-4 bg-black text-red-500 font-mono text-xs rounded-xl max-w-sm"></div>
+    <div id="root">
+        <!-- Pantalla de carga manual por si React demora -->
+        <div style="height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;">
+            <h1 style="font-family: 'Playfair Display', serif; font-size: 60px; font-style: italic;">LexApp</h1>
+            <p style="font-weight: 900; text-transform: uppercase; letter-spacing: 4px; margin-top: 20px;">Sincronizando con Santiago...</p>
+        </div>
     </div>
-
-    <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- ICONOS INTERNOS (Sin librerías externas) ---
-        const Icon = ({d}) => (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <path d={d} />
-            </svg>
-        );
-
-        const PATHS = {
-            book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z",
-            chat: "M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
-            users: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 1 0 8 4 4 0 0 1 0-8z",
-            send: "M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z"
-        };
-
-        // --- FIREBASE CONFIG ---
+        // TUS LLAVES REALES
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -75,204 +50,172 @@
         };
 
         const APP_UID = 'lex-app-finis-2026';
-        let db, auth;
-
-        try {
-            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-            auth = firebase.auth();
-            db = firebase.firestore();
-        } catch (e) {
-            console.error("Firebase Error:", e);
-        }
 
         function App() {
             const [user, setUser] = useState(null);
-            const [tab, setTab] = useState('biblioteca');
-            const [materias, setMaterias] = useState([]);
+            const [view, setView] = useState('biblioteca');
             const [msgs, setMsgs] = useState([]);
+            const [data, setData] = useState([]);
             const [input, setInput] = useState("");
-            const [loaded, setLoaded] = useState(false);
             const chatEnd = useRef(null);
 
-            // 1. Manejo de Sesión
             useEffect(() => {
-                const unsub = auth.onAuthStateChanged(u => {
+                if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+                const auth = firebase.auth();
+                const db = firebase.firestore();
+
+                const unsubAuth = auth.onAuthStateChanged(u => {
                     setUser(u);
-                    setLoaded(true);
-                    
-                    // FORZAR ocultar el cargador turquesa
-                    const loader = document.getElementById('boot-loader');
-                    if(loader) {
-                        loader.style.opacity = '0';
-                        setTimeout(() => loader.style.display = 'none', 500);
-                    }
-                }, err => {
-                    const debugEl = document.getElementById('debug-error');
-                    if(debugEl) {
-                        debugEl.innerText = "Error Auth: " + err.message;
-                        debugEl.classList.remove('hidden');
-                    }
                 });
-                return () => unsub();
-            }, []);
 
-            // 2. Carga de Datos
-            useEffect(() => {
-                if (!user || !loaded) return;
-                const path = `artifacts/${APP_UID}/public/data`;
-                
-                const unsub1 = db.collection(`${path}/biblioteca_col/archivos`)
-                    .onSnapshot(snap => {
-                        setMaterias(snap.docs.map(d => ({id: d.id, ...d.data()})));
-                    }, e => console.warn("Error Firestore Materias:", e));
+                // RUTAS CORREGIDAS (Número impar de segmentos: artifacts/id/public/data/coleccion)
+                const chatPath = `artifacts/${APP_UID}/public/data/mensajes`;
+                const docsPath = `artifacts/${APP_UID}/public/data/archivos`;
 
-                const unsub2 = db.collection(`${path}/chat_col/mensajes`)
+                // Cargar chat en tiempo real
+                const unsubChat = db.collection(chatPath)
                     .onSnapshot(snap => {
                         const list = snap.docs.map(d => ({id: d.id, ...d.data()}));
-                        list.sort((a,b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
+                        list.sort((a,b) => (a.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                         setMsgs(list);
-                    }, e => console.warn("Error Firestore Chat:", e));
+                    }, err => console.error("Error Chat:", err));
 
-                return () => { unsub1(); unsub2(); };
-            }, [user, loaded]);
+                // Cargar biblioteca en tiempo real
+                const unsubDocs = db.collection(docsPath)
+                    .onSnapshot(snap => {
+                        setData(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                    }, err => console.error("Error Biblioteca:", err));
+
+                return () => { 
+                    unsubAuth(); 
+                    unsubChat(); 
+                    unsubDocs();
+                };
+            }, []);
 
             useEffect(() => {
                 if (chatEnd.current) chatEnd.current.scrollIntoView({ behavior: 'smooth' });
             }, [msgs]);
 
             const login = () => {
-                const p = new firebase.auth.GoogleAuthProvider();
-                auth.signInWithPopup(p).catch(e => alert("Error: " + e.message));
+                const provider = new firebase.auth.GoogleAuthProvider();
+                firebase.auth().signInWithPopup(provider).catch(e => alert("Error: " + e.message));
             };
 
             const send = async () => {
-                if(!input.trim()) return;
-                const t = input; setInput("");
-                await db.collection(`artifacts/${APP_UID}/public/data/chat_col/mensajes`).add({
-                    text: t,
-                    user: user.displayName || 'Estudiante',
-                    uid: user.uid,
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                if(!input.trim() || !user) return;
+                const txt = input; setInput("");
+                try {
+                    await firebase.firestore().collection(`artifacts/${APP_UID}/public/data/mensajes`).add({
+                        text: txt,
+                        user: user.displayName,
+                        uid: user.uid,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (e) {
+                    console.error("Error al enviar:", e);
+                }
             };
 
-            const addTest = async () => {
-                const n = prompt("Nombre de la Materia:");
+            const upload = async () => {
+                if (!user) return;
+                const n = prompt("Nombre de la materia:");
                 if(!n) return;
-                await db.collection(`artifacts/${APP_UID}/public/data/biblioteca_col/archivos`).add({
-                    titulo: n,
-                    categoria: "CIVIL",
-                    autor: user.displayName || 'Anónimo',
-                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                });
+                try {
+                    await firebase.firestore().collection(`artifacts/${APP_UID}/public/data/archivos`).add({
+                        titulo: n.toUpperCase(),
+                        categoria: "GENERAL",
+                        autor: user.displayName,
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                } catch (e) {
+                    console.error("Error al subir:", e);
+                }
             };
 
-            if (!loaded) return null;
-
-            // Pantalla de Login (Si no hay usuario)
             if (!user) {
                 return (
-                    <div className="h-screen flex flex-col items-center justify-center p-6 text-center bg-[#00ced1]">
-                        <h1 className="text-9xl font-serif italic mb-8 animate-up">LexApp</h1>
-                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
-                            <h2 className="text-2xl font-black uppercase italic mb-8">Acceso Privado</h2>
-                            <button onClick={login} className="w-full bg-black text-[#00ced1] py-6 rounded-3xl font-black text-xl shadow-lg hover:scale-105 transition-all uppercase italic">
+                    <div className="h-screen flex flex-col items-center justify-center p-6 text-center">
+                        <h1 style={{fontFamily: 'Playfair Display'}} className="text-9xl font-black italic mb-4">LexApp</h1>
+                        <p className="font-black uppercase tracking-[0.5em] mb-12 opacity-50 text-xs text-black">Nube Santiago • Universidad Finis Terrae</p>
+                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full">
+                            <button onClick={login} className="btn-turquesa w-full text-xl uppercase italic">
                                 Entrar con Gmail
                             </button>
-                            <p className="mt-8 text-[10px] font-black opacity-30 uppercase">U. Finis Terrae • Chile</p>
+                            <p className="mt-8 text-[9px] font-black opacity-30 uppercase">Acceso Restringido Estudiantes</p>
                         </div>
                     </div>
                 );
             }
 
-            // Dashboard (Si ya entró)
             return (
-                <div className="flex h-screen bg-white text-black overflow-hidden animate-up">
+                <div className="flex h-screen bg-white text-black overflow-hidden">
                     {/* SIDEBAR */}
-                    <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20 flex-shrink-0">
-                        <div className="mb-14">
-                            <h1 className="text-6xl font-serif italic font-black leading-none">LexApp</h1>
-                            <p className="text-[10px] font-black uppercase opacity-60 mt-2">Finis Terrae • Santiago</p>
-                        </div>
-                        <div className="space-y-4 flex-grow">
-                            <button onClick={() => setTab('biblioteca')} className={`w-full flex items-center gap-4 p-5 font-black uppercase text-xs rounded-2xl border-4 border-transparent transition-all ${tab === 'biblioteca' ? 'active-tab shadow-hard' : 'hover:border-black'}`}>
-                                <Icon d={PATHS.book} /> Biblioteca
+                    <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col">
+                        <h1 className="text-5xl font-serif font-black italic mb-10">LexApp</h1>
+                        <div className="flex-grow space-y-4 font-black text-sm uppercase italic">
+                            <button onClick={() => setView('biblioteca')} className={`w-full text-left p-4 rounded-xl ${view === 'biblioteca' ? 'bg-black text-[#00ced1] shadow-hard' : 'hover:bg-black/10'}`}>
+                                📂 Biblioteca
                             </button>
-                            <button onClick={() => setTab('consultor')} className={`w-full flex items-center gap-4 p-5 font-black uppercase text-xs rounded-2xl border-4 border-transparent transition-all ${tab === 'consultor' ? 'active-tab shadow-hard' : 'hover:border-black'}`}>
-                                <Icon d={PATHS.chat} /> Consultor IA
-                            </button>
-                            <button onClick={() => setTab('amigos')} className={`w-full flex items-center gap-4 p-5 font-black uppercase text-xs rounded-2xl border-4 border-transparent transition-all ${tab === 'amigos' ? 'active-tab shadow-hard' : 'hover:border-black'}`}>
-                                <Icon d={PATHS.users} /> Amigos
+                            <button onClick={() => setView('chat')} className={`w-full text-left p-4 rounded-xl ${view === 'chat' ? 'bg-black text-[#00ced1] shadow-hard' : 'hover:bg-black/10'}`}>
+                                💬 Consultor IA
                             </button>
                         </div>
-                        
-                        <div className="mt-auto bg-black p-4 rounded-3xl flex items-center gap-3 border-2 border-white/10">
-                            {user.photoURL ? (
-                                <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" referrerPolicy="no-referrer" />
-                            ) : (
-                                <div className="w-10 h-10 rounded-full bg-[#00ced1] flex items-center justify-center text-black font-black uppercase tracking-tighter">U</div>
-                            )}
+                        <div className="mt-auto bg-black p-4 rounded-3xl flex items-center gap-3 text-white">
+                            <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" referrerPolicy="no-referrer" />
                             <div className="truncate">
-                                <p className="text-[10px] font-black text-[#00ced1] uppercase truncate italic">{user.displayName || 'Estudiante'}</p>
-                                <button onClick={() => auth.signOut()} className="text-[8px] text-white opacity-40 font-black hover:underline uppercase">Desconectar</button>
+                                <p className="text-[10px] font-black uppercase text-[#00ced1]">{user.displayName}</p>
+                                <button onClick={() => firebase.auth().signOut()} className="text-[8px] opacity-60 underline">SALIR</button>
                             </div>
                         </div>
                     </nav>
 
                     {/* MAIN */}
-                    <main className="flex-grow p-12 overflow-y-auto bg-white flex flex-col">
-                        <header className="flex justify-between items-end mb-16 flex-shrink-0">
-                            <h2 className="text-8xl font-serif font-black italic border-b-[15px] border-[#00ced1] leading-none uppercase">{tab}</h2>
-                            <button onClick={addTest} className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:-translate-y-1 transition-all uppercase italic">+ SUBIR</button>
+                    <main className="flex-grow p-12 overflow-y-auto">
+                        <header className="flex justify-between items-end mb-12">
+                            <h2 className="text-8xl font-serif font-black italic border-b-[15px] border-[#00ced1] inline-block uppercase leading-none">{view}</h2>
+                            {view === 'biblioteca' && (
+                                <button onClick={upload} className="bg-black text-[#00ced1] px-8 py-4 rounded-xl font-black uppercase italic shadow-lg hover:scale-105 transition-all">
+                                    + Subir
+                                </button>
+                            )}
                         </header>
-
-                        <div className="flex-grow">
-                            {tab === 'biblioteca' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-10 text-4xl uppercase italic leading-tight text-black">Nube de Santiago Vacía</p>}
-                                    {materias.map(m => (
-                                        <div key={m.id} className="p-10 border-8 border-black rounded-[50px] shadow-hard bg-white hover:bg-[#00ced1] transition-all group">
-                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded uppercase">APUNTE</span>
-                                            <h3 className="text-4xl font-serif italic mt-6 mb-2 uppercase leading-none">{m.titulo}</h3>
-                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-4">Autor: {m.autor}</p>
+                        
+                        {view === 'biblioteca' ? (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                {data.length === 0 ? (
+                                    <div className="col-span-2 text-center py-20 opacity-20 font-black text-4xl uppercase italic">
+                                        Nube Vacía
+                                    </div>
+                                ) : (
+                                    data.map(m => (
+                                        <div key={m.id} className="p-10 border-8 border-black rounded-[50px] shadow-hard bg-white italic font-black text-4xl">
+                                            <span className="text-xs bg-black text-[#00ced1] px-2 py-1 rounded not-italic font-black">{m.categoria}</span>
+                                            <p className="mt-4 uppercase">{m.titulo}</p>
+                                            <p className="text-[10px] opacity-40 mt-4 not-italic">Autor: {m.autor}</p>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        ) : (
+                            <div className="h-[600px] flex flex-col border-8 border-black rounded-[50px] overflow-hidden bg-gray-50 shadow-hard">
+                                <div className="flex-grow p-8 overflow-y-auto space-y-4">
+                                    {msgs.map((m, i) => (
+                                        <div key={i} className={`flex ${m.uid === user.uid ? 'justify-end' : 'justify-start'}`}>
+                                            <div className={`p-4 rounded-2xl max-w-[80%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white' : 'bg-[#00ced1] font-bold'}`}>
+                                                <p className="text-[8px] opacity-40 uppercase mb-1">{m.user}</p>
+                                                <p>{m.text}</p>
+                                            </div>
                                         </div>
                                     ))}
+                                    <div ref={chatEnd} />
                                 </div>
-                            )}
-
-                            {tab === 'consultor' && (
-                                <div className="h-[600px] flex flex-col border-8 border-black rounded-[50px] overflow-hidden bg-gray-50 shadow-hard">
-                                    <div className="flex-grow p-10 overflow-y-auto space-y-6">
-                                        {msgs.map((m, i) => (
-                                            <div key={i} className={`flex ${m.uid === user.uid ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white' : 'bg-[#00ced1] font-black'}`}>
-                                                    <p className="text-[8px] font-black uppercase opacity-40 mb-1">{m.user}</p>
-                                                    <p className="text-sm leading-relaxed">{m.text}</p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        <div ref={chatEnd} />
-                                    </div>
-                                    <div className="p-8 bg-white border-t-8 border-black flex gap-5">
-                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && send()} className="flex-grow font-black text-sm uppercase bg-white border-none outline-none" placeholder="Duda al grupo..." />
-                                        <button onClick={send} className="bg-black text-[#00ced1] p-6 rounded-3xl shadow-xl hover:scale-110 transition-transform flex items-center justify-center">
-                                            <Icon d={PATHS.send} />
-                                        </button>
-                                    </div>
+                                <div className="p-6 bg-white border-t-8 border-black flex gap-4">
+                                    <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && send()} className="flex-grow p-4 font-black uppercase text-sm" placeholder="Escribe al grupo..." />
+                                    <button onClick={send} className="bg-black text-[#00ced1] p-4 rounded-xl font-black">ENVIAR</button>
                                 </div>
-                            )}
-
-                            {tab === 'amigos' && (
-                                <div className="max-w-4xl bg-white border-8 border-black rounded-[60px] p-14 shadow-hard">
-                                    <h3 className="text-4xl font-serif italic mb-8 uppercase leading-none text-black">Red en Línea</h3>
-                                    <div className="flex items-center gap-6 bg-[#00ced1] p-8 rounded-3xl border-4 border-black italic">
-                                        <div className="w-5 h-5 bg-black rounded-full animate-pulse shadow-[0_0_20px_#00ced1]"></div>
-                                        <span className="font-black uppercase text-2xl tracking-tighter text-black">{user.displayName || 'Tú (Activo)'}</span>
-                                    </div>
-                                    <p className="mt-12 text-[10px] font-black opacity-30 uppercase tracking-[0.3em] text-black">Conectado a la base de datos de Santiago de Chile.</p>
-                                </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
                     </main>
                 </div>
             );
