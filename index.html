@@ -3,38 +3,78 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LexApp - Diagnóstico de Nube</title>
-    <!-- Frameworks -->
+    <title>LexApp - Rescate de Sistema</title>
+    
+    <!-- Estilos Críticos (Cargan primero) -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <!-- Firebase SDK (Versión Compat) -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Playfair+Display:ital,wght@0,900;1,900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@900&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet">
     
     <style>
-        :root { --turquesa: #00ced1; --negro: #000000; --blanco: #ffffff; }
-        body { font-family: 'Inter', sans-serif; background-color: var(--blanco); color: var(--negro); margin: 0; padding: 0; overflow: hidden; }
-        .font-serif { font-family: 'Playfair Display', serif; }
-        .shadow-hard { box-shadow: 10px 10px 0px 0px var(--negro); }
-        .active-tab { background-color: var(--negro) !important; color: var(--turquesa) !important; transform: translateX(10px); }
-        .animate-up { animation: slideUp 0.4s ease-out forwards; }
-        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        body { background-color: #00ced1; font-family: 'Inter', sans-serif; margin: 0; padding: 20px; color: black; }
+        #debug-console { 
+            background: #000; color: #0f0; font-family: monospace; padding: 15px; 
+            border-radius: 10px; font-size: 12px; margin-top: 20px; max-height: 200px; overflow-y: auto;
+            border: 4px solid white; display: block;
+        }
+        .error-box { background: white; border: 10px solid black; padding: 40px; border-radius: 40px; box-shadow: 15px 15px 0px 0px rgba(0,0,0,1); }
+        .btn-retry { background: black; color: #00ced1; padding: 20px 40px; border-radius: 20px; font-weight: 900; margin-top: 20px; cursor: pointer; }
     </style>
 </head>
 <body>
+
+    <!-- 1. Interfaz de Carga / Emergencia (Visible por defecto) -->
+    <div id="loading-screen" class="h-screen flex flex-col items-center justify-center">
+        <div class="error-box max-w-2xl w-full text-center">
+            <h1 style="font-family: 'Playfair Display', serif;" class="text-6xl mb-4 italic">LexApp</h1>
+            <p id="status-text" class="font-black uppercase tracking-widest text-sm mb-6 text-gray-500">Iniciando sistemas de rescate...</p>
+            
+            <!-- Consola de Logs (Aquí verás qué está fallando) -->
+            <div id="debug-console">
+                > Esperando ejecución de scripts...<br>
+            </div>
+
+            <div id="manual-actions" class="hidden">
+                <button onclick="window.location.reload()" class="btn-retry uppercase italic">Reiniciar Página</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. Contenedor de React (Oculto hasta que cargue) -->
     <div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+    <!-- Scripts de Diagnóstico -->
+    <script>
+        const logger = document.getElementById('debug-console');
+        const statusText = document.getElementById('status-text');
+        
+        function log(msg, color = '#0f0') {
+            logger.innerHTML += `<span style="color: ${color}">> ${msg}</span><br>`;
+            logger.scrollTop = logger.scrollHeight;
+        }
 
-        // --- CONFIGURACIÓN FIREBASE (LLAVES ACTUALES) ---
+        window.onerror = function(message, source, lineno, colno, error) {
+            log(`ERROR DETECTADO: ${message}`, 'red');
+            statusText.innerText = "Error en el código JavaScript";
+            document.getElementById('manual-actions').classList.remove('hidden');
+        };
+
+        log("Cargando librerías externas...");
+    </script>
+
+    <!-- Librerías Externas -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        log("Librerías cargadas. Iniciando React...", '#00ced1');
+
+        // LLAVES REALES
         const firebaseConfig = {
             apiKey: "AIzaSyDW88ZLRlviHhKkem670HHzRTyVSRM3RY8",
             authDomain: "lexapp-60f9b.firebaseapp.com",
@@ -45,234 +85,84 @@
             measurementId: "G-X9GV8RBH41"
         };
 
-        const APP_PATH = 'lex-app-finis-2026';
-        let db, auth;
-
-        // Inicialización ultra-segura
-        try {
-            if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-            auth = firebase.auth();
-            db = firebase.firestore();
-        } catch (e) { console.error("Firebase Init Error:", e); }
+        const APP_ID = 'lex-app-finis-2026';
 
         function App() {
             const [user, setUser] = useState(null);
-            const [status, setStatus] = useState('loading'); // 'loading', 'login', 'ready', 'error'
-            const [errorLog, setErrorLog] = useState('');
-            const [tab, setTab] = useState('biblioteca');
-            const [materias, setMaterias] = useState([]);
-            const [msgs, setMsgs] = useState([]);
-            const [input, setInput] = useState("");
-            const chatEnd = useRef(null);
+            const [view, setView] = useState('home');
 
-            // 1. Escuchar sesión
             useEffect(() => {
-                if (!auth) {
-                    setStatus('error');
-                    setErrorLog('Error: Firebase no se pudo inicializar. Revisa las llaves.');
-                    return;
-                }
+                log("Conectando con Firebase Santiago...", 'white');
+                try {
+                    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+                    const auth = firebase.auth();
+                    const db = firebase.firestore();
 
-                const unsub = auth.onAuthStateChanged(u => {
-                    console.log("Auth State Changed:", u);
-                    if (u) {
-                        setUser(u);
-                        setStatus('ready');
-                    } else {
-                        setStatus('login');
-                    }
-                }, err => {
-                    setStatus('error');
-                    setErrorLog('Error de Autenticación: ' + err.message);
-                });
-                return () => unsub();
+                    auth.onAuthStateChanged(u => {
+                        if (u) {
+                            log(`Usuario detectado: ${u.displayName || 'Estudiante'}`, '#0f0');
+                            setUser(u);
+                        } else {
+                            log("Esperando inicio de sesión...", 'orange');
+                        }
+                    });
+                } catch (e) {
+                    log("FALLO FIREBASE: " + e.message, 'red');
+                }
             }, []);
 
-            // 2. Cargar datos
-            useEffect(() => {
-                if (status !== 'ready' || !user || !db) return;
-
-                const base = `artifacts/${APP_PATH}/public/data`;
-
-                // Listener de Materias
-                const unsubMat = db.collection(base).doc('biblioteca_col').collection('archivos')
-                    .onSnapshot(snap => {
-                        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        list.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
-                        setMaterias(list);
-                    }, err => {
-                        console.error("Firestore Error (Materias):", err);
-                        // No bloqueamos la app, solo logueamos
-                    });
-
-                // Listener de Chat
-                const unsubChat = db.collection(base).doc('chat_col').collection('mensajes')
-                    .onSnapshot(snap => {
-                        const list = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        list.sort((a, b) => (a.timestamp?.seconds || 0) - (b.timestamp?.seconds || 0));
-                        setMsgs(list);
-                    }, err => console.error("Firestore Error (Chat):", err));
-
-                return () => { unsubMat(); unsubChat(); };
-            }, [status, user]);
-
-            useEffect(() => {
-                if (chatEnd.current) chatEnd.current.scrollIntoView({ behavior: 'smooth' });
-            }, [msgs]);
-
-            // Forzar actualización de iconos Lucide
-            useEffect(() => {
-                if (window.lucide) window.lucide.createIcons();
-            }, [tab, status]);
-
-            const loginGoogle = () => {
+            const login = () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
-                auth.signInWithPopup(provider).catch(err => {
-                    setStatus('error');
-                    setErrorLog(`Error de Google Login: ${err.message}. \n\n¿Agregaste ${window.location.hostname} a dominios autorizados en Firebase?`);
-                });
+                firebase.auth().signInWithPopup(provider).catch(e => log("ERROR GOOGLE: " + e.message, 'red'));
             };
 
-            const handleSend = async () => {
-                if (!input.trim() || !user) return;
-                const txt = input; setInput("");
-                try {
-                    await db.collection(`artifacts/${APP_PATH}/public/data/chat_col/mensajes`).add({
-                        text: txt,
-                        user: user.displayName || 'Estudiante',
-                        uid: user.uid,
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-                } catch (e) { alert("Error al enviar: " + e.message); }
-            };
+            // Si llegamos aquí, React está funcionando
+            useEffect(() => {
+                document.getElementById('loading-screen').style.display = 'none';
+            }, []);
 
-            // --- VISTAS DE ESTADO ---
-
-            if (status === 'loading') {
+            if (!user) {
                 return (
-                    <div className="h-screen flex flex-col items-center justify-center bg-[#00ced1] text-black">
-                        <div className="text-2xl font-black animate-pulse">CARGANDO LEXAPP...</div>
-                        <div className="text-[10px] mt-4 opacity-50">Sincronizando con lexapp-60f9b</div>
-                    </div>
-                );
-            }
-
-            if (status === 'error') {
-                return (
-                    <div className="h-screen flex flex-col items-center justify-center bg-white p-10">
-                        <div className="bg-red-100 border-l-8 border-red-600 p-8 rounded-2xl shadow-xl max-w-2xl">
-                            <h1 className="text-2xl font-black text-red-600 mb-4 uppercase">Error Detectado</h1>
-                            <p className="font-mono text-sm bg-white/50 p-4 rounded-lg break-words">{errorLog}</p>
-                            <div className="mt-8 flex gap-4">
-                                <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-6 py-3 rounded-xl font-black shadow-lg">REINTENTAR</button>
-                                <button onClick={() => setStatus('login')} className="bg-black text-white px-6 py-3 rounded-xl font-black">VOLVER AL LOGIN</button>
-                            </div>
-                        </div>
-                    </div>
-                );
-            }
-
-            if (status === 'login') {
-                return (
-                    <div className="h-screen bg-[#00ced1] flex flex-col items-center justify-center p-6">
-                        <div className="text-center mb-12">
-                            <h1 className="text-8xl font-serif font-black italic text-black leading-none animate-up">LexApp</h1>
-                            <p className="mt-4 font-black uppercase tracking-[0.4em] opacity-40 text-xs">U. Finis Terrae • Santiago</p>
-                        </div>
-                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-hard max-w-md w-full animate-up">
-                            <h2 className="font-black text-2xl mb-8 uppercase italic">Acceso Seguro</h2>
-                            <button 
-                                onClick={loginGoogle}
-                                className="w-full bg-black text-[#00ced1] px-8 py-6 rounded-3xl font-black shadow-hard hover:scale-105 transition-all flex items-center justify-center gap-4 uppercase italic text-sm"
-                            >
-                                <i data-lucide="log-in"></i> Entrar con Gmail
+                    <div className="h-screen flex flex-col items-center justify-center p-6 text-center">
+                        <h1 style={{fontFamily: 'Playfair Display'}} className="text-9xl font-black italic mb-4">LexApp</h1>
+                        <p className="font-black uppercase tracking-[0.5em] mb-12 opacity-50 text-xs">Nube Santiago Conectada</p>
+                        <div className="bg-white border-[10px] border-black p-12 rounded-[60px] shadow-[20px_20px_0_0_rgba(0,0,0,1)] max-w-md w-full">
+                            <button onClick={login} className="w-full bg-black text-[#00ced1] py-6 rounded-3xl font-black text-xl shadow-lg hover:scale-105 transition-all uppercase italic">
+                                Entrar con Gmail
                             </button>
-                            <p className="mt-8 text-[9px] font-black opacity-30 text-center uppercase">Asegúrate de estar en el dominio autorizado</p>
+                            <p className="mt-8 text-[9px] font-black opacity-30 uppercase">ID Proyecto: lexapp-60f9b</p>
                         </div>
                     </div>
                 );
             }
 
-            // --- VISTA PRINCIPAL ---
             return (
-                <div className="flex h-screen bg-white overflow-hidden">
-                    {/* SIDEBAR */}
-                    <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col z-20 flex-shrink-0">
-                        <div className="mb-14">
-                            <h1 className="text-6xl font-serif font-black italic tracking-tighter text-black">LexApp</h1>
-                            <p className="text-[10px] font-black uppercase opacity-60 text-black">Online • Chile 2026</p>
-                        </div>
-                        <div className="space-y-4 flex-grow">
-                            {['biblioteca', 'consultor', 'amigos'].map(t => (
-                                <button key={t} onClick={() => setTab(t)} className={`w-full text-left p-5 font-black uppercase text-sm rounded-2xl transition-all border-4 border-transparent hover:border-black ${tab === t ? 'active-tab shadow-hard' : 'text-black/40'}`}>
-                                    {t.toUpperCase()}
-                                </button>
-                            ))}
+                <div className="flex h-screen bg-white text-black overflow-hidden">
+                    <nav className="w-80 bg-[#00ced1] border-r-8 border-black p-8 flex flex-col">
+                        <h1 className="text-5xl font-serif font-black italic mb-12">LexApp</h1>
+                        <div className="space-y-4 flex-grow font-black text-sm uppercase italic">
+                            <button className="w-full text-left p-4 bg-black text-[#00ced1] rounded-2xl shadow-hard">Biblioteca</button>
+                            <button className="w-full text-left p-4 hover:bg-black/10 rounded-2xl">Consultor IA</button>
+                            <button className="w-full text-left p-4 hover:bg-black/10 rounded-2xl">Amigos</button>
                         </div>
                         <div className="mt-auto bg-black p-4 rounded-3xl text-[#00ced1] flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#00ced1] border-2 border-black flex items-center justify-center">
-                                {user.photoURL ? <img src={user.photoURL} className="rounded-full" referrerPolicy="no-referrer" /> : <span className="font-black text-black">U</span>}
-                            </div>
+                            <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-[#00ced1]" referrerPolicy="no-referrer" />
                             <div className="truncate">
-                                <p className="text-[10px] font-black uppercase truncate text-[#00ced1]">{user.displayName || 'Estudiante'}</p>
-                                <button onClick={() => auth.signOut()} className="text-[8px] opacity-60 font-black hover:underline uppercase text-white">Desconectar</button>
+                                <p className="text-[10px] font-black uppercase truncate">{user.displayName}</p>
+                                <button onClick={() => firebase.auth().signOut()} className="text-[8px] opacity-60 font-black hover:underline uppercase">Salir</button>
                             </div>
                         </div>
                     </nav>
-
-                    {/* MAIN AREA */}
-                    <main className="flex-grow p-12 overflow-y-auto flex flex-col bg-white">
-                        <header className="flex justify-between items-end mb-16 flex-shrink-0">
-                            <h2 className="text-8xl font-serif font-black uppercase italic border-b-[15px] border-[#00ced1] leading-none">{tab}</h2>
-                            <button className="bg-black text-[#00ced1] px-10 py-5 rounded-3xl font-black shadow-hard hover:translate-y-[-4px] transition-all uppercase italic">+ SUBIR</button>
-                        </header>
-
-                        <div className="animate-up flex-grow">
-                            {tab === 'biblioteca' && (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                                    {materias.length === 0 && <p className="col-span-3 text-center py-20 font-black opacity-10 text-4xl italic uppercase">Biblioteca vacía en Santiago.</p>}
-                                    {materias.map(m => (
-                                        <div key={m.id} className="p-10 border-[8px] border-black rounded-[50px] hover:bg-[#00ced1] transition-all shadow-hard group cursor-pointer bg-white">
-                                            <span className="bg-black text-[#00ced1] text-[10px] font-black px-3 py-1 rounded-full uppercase">{m.categoria}</span>
-                                            <h3 className="text-4xl font-serif font-black italic mt-6 mb-2 uppercase text-black leading-none">{m.titulo}</h3>
-                                            <p className="text-[9px] font-bold opacity-40 uppercase mt-4 italic">Autor: {m.autor}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            {tab === 'consultor' && (
-                                <div className="h-[600px] flex flex-col border-[8px] border-black rounded-[50px] overflow-hidden bg-gray-50 shadow-hard">
-                                    <div className="flex-grow p-10 overflow-y-auto space-y-6">
-                                        {msgs.map((m, i) => (
-                                            <div key={i} className={`flex ${m.uid === user.uid ? 'justify-end' : 'justify-start'}`}>
-                                                <div className={`p-6 rounded-[40px] max-w-[85%] border-4 border-black ${m.uid === user.uid ? 'bg-black text-white shadow-lg' : 'bg-[#00ced1] font-bold text-black'}`}>
-                                                    <p className="text-[8px] font-black uppercase mb-1 opacity-40">{m.user}</p>
-                                                    <p className="text-sm leading-relaxed">{m.text}</p>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        <div ref={chatEnd} />
-                                    </div>
-                                    <div className="p-8 bg-white border-t-[8px] border-black flex gap-5">
-                                        <input value={input} onChange={e => setInput(e.target.value)} onKeyPress={e => e.key === 'Enter' && handleSend()} className="flex-grow font-black text-sm uppercase bg-white border-none outline-none" placeholder="Duda al grupo de estudio..." />
-                                        <button onClick={handleSend} className="bg-black text-[#00ced1] p-6 rounded-3xl hover:scale-110 shadow-xl flex items-center justify-center"><i data-lucide="send"></i></button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {tab === 'amigos' && (
-                                <div className="max-w-4xl bg-white border-8 border-black rounded-[40px] overflow-hidden shadow-hard p-12">
-                                    <h3 className="text-3xl font-black italic mb-8 uppercase tracking-tighter text-black">Red Finis Terrae</h3>
-                                    <div className="flex items-center gap-6 bg-[#00ced1] p-8 rounded-3xl border-4 border-black italic shadow-lg">
-                                        <div className="w-5 h-5 bg-black rounded-full animate-pulse"></div>
-                                        <span className="font-black uppercase text-xl text-black">{user.displayName} (Tú)</span>
-                                    </div>
-                                    <p className="mt-10 text-xs font-bold opacity-40 uppercase italic text-black leading-relaxed">
-                                        Esta aplicación usa la base de datos de Santiago de Chile (southamerica-west1) para una velocidad máxima entre compañeros.
-                                    </p>
-                                </div>
-                            )}
+                    <main className="flex-grow p-12 overflow-y-auto">
+                        <h2 className="text-8xl font-serif font-black italic border-b-[15px] border-[#00ced1] inline-block mb-12 uppercase">Nube</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                            <div className="p-10 border-8 border-black rounded-[50px] shadow-hard italic font-black text-4xl">
+                                <span className="text-xs bg-black text-[#00ced1] px-2 py-1 rounded not-italic">CIVIL</span>
+                                <p className="mt-4">BIENES Y REALES</p>
+                            </div>
+                            <div className="p-10 border-8 border-black rounded-[50px] shadow-hard italic font-black text-4xl opacity-20">
+                                + PRÓXIMAMENTE
+                            </div>
                         </div>
                     </main>
                 </div>
